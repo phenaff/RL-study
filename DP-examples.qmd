@@ -1,22 +1,18 @@
 ---
 title: "Dynamic Programming"
+format: pdf
 ---
-<style>
-.no-bullets ul {
-  list-style-type: none;
-  padding-left: 0;
-}
-</style>
 
 ## The test case
 
 We use the classical "gridworld" environment to illustrate the basic algorithms of dynamic programming. 
-The environment is a 6x6 grid, where the agent starts at the top-left corner (state $S_0) and aims to reach the bottom-right corner (state $S_{35}$). The agent can move in four directions: up, down, left, and right. However, there are obstacles (walls) at states $S_{14}, S_{20}, S_{21}$ and $S_{27}$ that the agent cannot pass through, and a pit at state $S_{16}$ where the agent would get stuck. The objective is modeled by assigning a reward to each state: the pit has a reward of -1000, and the end goal a reward of 10. Passing through any other state has a reward of -1. The agent receives the reward immediately upon entering a state.
+The environment is a 6x6 grid, where the agent starts at the top-left corner (state $S_0$) and aims to reach the bottom-right corner (state $S_{35}$). The agent can move in four directions: up, down, left, and right. However, there are obstacles (walls) at states $S_{14}, S_{20}, S_{21}$ and $S_{27}$ that the agent cannot pass through, and a pit at state $S_{16}$ where the agent would get stuck. The objective is modeled by assigning a reward to each state: the pit has a reward of -1000, and the end goal a reward of 10. Passing through any other state has a reward of -1. The agent receives the reward immediately upon entering a state.
  The episode ends when the agent reaches either the end goal or the pit.
 
 
 ```{python}
 #| echo: false
+#| fig-align: center
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
@@ -50,14 +46,15 @@ for init in INIT_STATES:
     grid_vis[divmod(init, GRID_SIZE)] = 4
 
 # 2. Plotting
-fig, ax = plt.subplots(figsize=(7, 7))
+fig, ax = plt.subplots(figsize=(4, 4))
 
 # Custom colormap
 # 0: white (empty), 1: gray (obstacle), 2: lightgreen (goal), 3: salmon (pit), 4: lightblue (start)
 cmap = ListedColormap(['white', 'gray', 'lightgreen', 'salmon', 'lightblue'])
 
 # plot the grid
-ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], origin='upper')
+ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], 
+          origin='upper')
 
 # Draw thick grid lines
 ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
@@ -87,12 +84,13 @@ for i in range(STATES):
     text_color = 'white' if i in OBSTACLES else 'black'
     
     ax.text(x_pos, y_pos, label, ha='center', va='center', 
-            fontsize=11, fontweight='bold', color=text_color)
+            fontsize=11, fontweight='normal', color=text_color)
 
 # Clean up axes
 ax.set_xticklabels([])
 ax.set_yticklabels([])
-ax.set_title("Gridworld with obstacles and a pit", fontsize=12, fontweight='bold')
+ax.set_title("Gridworld with obstacles and a pit", fontsize=11, 
+             fontweight='normal')
 
 plt.show()
 ```
@@ -108,11 +106,11 @@ $$
 where:
 
 $$
-\begin{align*}
+\begin{aligned}
 R(s,a) & \ \ \text{reward received when taking action $a$ in state $s$,} \\
 \gamma & \ \ \text{discount factor, and} \\
 s' & \ \ \text{next state resulting from taking action $a$ in state $s$.}
-\end{align*}
+\end{aligned}
 $$
 
 We repeatedly use the following helper function to compute the next state $s'$ and reward $R(s,a)$ for a given state and action.
@@ -124,7 +122,8 @@ def move(s, a_idx):
     """
     row, col = divmod(s, GRID_SIZE)
     dr, dc = ACTIONS[a_idx]
-    nr, nc = max(0, min(GRID_SIZE-1, row + dr)), max(0, min(GRID_SIZE-1, col + dc))
+    nr = max(0, min(GRID_SIZE-1, row + dr))
+    nc = max(0, min(GRID_SIZE-1, col + dc))
     next_s = nr * GRID_SIZE + nc
 
     if next_s in OBSTACLES: next_s = s
@@ -149,7 +148,8 @@ for s in range(STATES):
     if s in TERMINAL_STATES or s in OBSTACLES: continue
     r, c = divmod(s, GRID_SIZE)
     for a in ACTIONS:
-        nr, nc = max(0, min(GRID_SIZE-1, r + a[0])), max(0, min(GRID_SIZE-1, c + a[1]))
+        nr = max(0, min(GRID_SIZE-1, r + a[0]))
+        nc = max(0, min(GRID_SIZE-1, c + a[1]))
         ns = nr * GRID_SIZE + nc
         if ns != s and ns not in OBSTACLES:
             predecessors[ns].append(s)
@@ -220,7 +220,8 @@ def get_next_states(s):
     next_states = []
     for a in ACTIONS:
         r, c = divmod(s, GRID_SIZE)
-        nr, nc = max(0, min(GRID_SIZE-1, r + a[0])), max(0, min(GRID_SIZE-1, c + a[1]))
+        nr = max(0, min(GRID_SIZE-1, r + a[0]))
+        nc = max(0, min(GRID_SIZE-1, c + a[1]))
         ns = nr * GRID_SIZE + nc
         if ns != s and ns not in OBSTACLES and ns <= STATES-1:
             next_states.append(ns)
@@ -233,7 +234,8 @@ while current_state != GOAL_STATES[0]:
     next_states = get_next_states(current_state)
     if not next_states:
         break
-    max_index, max_value = max(enumerate(V[next_states]), key=lambda x: x[1])
+    max_index, max_value = max(enumerate(V[next_states]), 
+                               key=lambda x: x[1])
     current_state = next_states[max_index]
     optimal_path.append(current_state)
 ```
@@ -242,10 +244,12 @@ One optimal path is pictured below.
 ```{python}
 #| label: draw-optimal-path
 #| echo: false
+#| fig-align: center
 
 def draw_optimal_path(path, title):
-    fig, ax = plt.subplots(figsize=(7, 7))
-    ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], origin='upper')
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], 
+              origin='upper')
     ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
     ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
     ax.grid(which='both', color='black', linestyle='-', linewidth=2)
@@ -260,7 +264,8 @@ def draw_optimal_path(path, title):
         elif i in PIT_STATES: label += "\n(Pit)"
         elif i in INIT_STATES: label += "\n(Start)"
         text_color = 'white' if i in OBSTACLES else 'black'
-        ax.text(x_pos, y_pos, label, ha='center', va='center', fontsize=11, fontweight='bold', color=text_color)
+        ax.text(x_pos, y_pos, label, ha='center', va='center', 
+                fontsize=11, fontweight='normal', color=text_color)
 
     for i in range(len(path) - 1):
         s1 = path[i]
@@ -272,14 +277,19 @@ def draw_optimal_path(path, title):
         
         if s1 == s2:
             ax.annotate("", xy=(x1+0.05, y1+0.1), xytext=(x1, y1),
-                        arrowprops=dict(arrowstyle="->,head_width=0.3,head_length=0.3", connectionstyle="arc3,rad=-2", color="blue", lw=2, shrinkA=10, shrinkB=10))
+                        arrowprops=dict(
+                            arrowstyle="->,head_width=0.2,head_length=0.2", 
+                            connectionstyle="arc3,rad=-2", color="blue", 
+                            lw=1.5, shrinkA=10, shrinkB=10))
         else:
             ax.annotate("", xy=(x2, y2), xytext=(x1, y1), 
-                        arrowprops=dict(arrowstyle="->,head_width=0.4,head_length=0.4", color="blue", lw=3, shrinkA=15, shrinkB=15))
+                        arrowprops=dict(
+                            arrowstyle="->,head_width=0.25,head_length=0.3", 
+                            color="blue", lw=1.5, shrinkA=10, shrinkB=10))
 
     ax.set_xticklabels([])
     ax.set_yticklabels([])
-    ax.set_title(title, fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=12, fontweight='normal')
     plt.show()
 
 draw_optimal_path(optimal_path, "Optimal Path (Deterministic)")
@@ -554,9 +564,10 @@ The figure below shows the optimal policy in the stochastic case, where the arro
 
 ```{python}
 #| echo: false
+#| fig-align: center
 
 def draw_policy(Q, grid_size=GRID_SIZE):
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(5, 5))
     
     # Action arrows mapping: 0:U, 1:D, 2:L, 3:R
     # (dx, dy) format for plt.arrow
@@ -581,15 +592,17 @@ def draw_policy(Q, grid_size=GRID_SIZE):
             color = 'white'
             label = f"S{s}"
 
-        rect = plt.Rectangle([x - 0.5, y - 0.5], 1, 1, facecolor=color, edgecolor='black')
+        rect = plt.Rectangle([x - 0.5, y - 0.5], 1, 1, 
+                             facecolor=color, edgecolor='black')
         ax.add_patch(rect)
-        ax.text(x, y + 0.3, label, ha='center', va='center', fontweight='bold')
+        ax.text(x, y + 0.3, label, ha='center', va='center', fontweight='normal')
 
         # Draw Policy Arrows (only for non-terminal, non-obstacle states)
         if s not in GOAL_STATES and s not in PIT_STATES and s not in OBSTACLES:
             best_action = np.argmax(Q[s])
             dx, dy = arrows[best_action]
-            ax.arrow(x, y, dx, dy, head_width=0.1, head_length=0.1, fc='black', ec='black')
+            ax.arrow(x, y, dx, dy, head_width=0.1, head_length=0.1, 
+                     fc='black', ec='black')
             
             # Optional: Display the max Q-value
             ax.text(x, y - 0.3, f"V:{Q[s, best_action]:.1f}", ha='center', size=8)
@@ -611,3 +624,39 @@ draw_policy(Q)
 ``` 
 
 Of particular interest are the optimal decisions in $S_{15}$ and $S_{17}$, which are adjacent to the pit at $S_{16}$. Regarding $S_{15}$, the optimal action in the deterministic case is to move up; however, in the stochastic case, moving up involves a 10% chance of falling into the pit. The optimal strategy is therefore to (repeatedly) attempt to move left, with a 10% chance of slipping up but no chance of falling into the pit. Similarly, in $S_{17}$, the optimal action in the deterministic case is to move down, but this move has a 10% chance of slipping to the left into the pit; the optimal action is to (repeatedly) attempt to move right until the agent moves down to $S_{23}$. 
+
+To see this policy in action, we can simulate a realization of a path starting from the initial state. To illustrate the stochastic nature of the environment, consider the path starting from $S_6$. While the intended move was "down", a slippage to the right occurs.
+
+```{python}
+#| label: simulate-stochastic-path
+#| echo: false
+#| fig-align: center
+
+np.random.seed(42)  # For reproducibility
+
+current_state = INIT_STATES[0]
+stochastic_path = [current_state]
+
+MAX_STEPS = 100
+steps = 0
+
+while (current_state not in GOAL_STATES and 
+       current_state not in PIT_STATES and 
+       steps < MAX_STEPS):
+    
+    # Get optimal action from our Q-table
+    best_action = np.argmax(Q[current_state])
+    
+    # Get possible outcomes (prob, next_state, reward)
+    outcomes = get_transition_results(current_state, best_action)
+    
+    probs = [out[0] for out in outcomes]
+    next_states = [out[1] for out in outcomes]
+    
+    # Sample the next state based on transition probabilities
+    current_state = np.random.choice(next_states, p=probs)
+    stochastic_path.append(current_state)
+    steps += 1
+
+draw_optimal_path(stochastic_path, "Simulated Path (Stochastic Policy)")
+```
