@@ -1,0 +1,613 @@
+---
+title: "Dynamic Programming"
+---
+<style>
+.no-bullets ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+</style>
+
+## The test case
+
+We use the classical "gridworld" environment to illustrate the basic algorithms of dynamic programming. 
+The environment is a 6x6 grid, where the agent starts at the top-left corner (state $S_0) and aims to reach the bottom-right corner (state $S_{35}$). The agent can move in four directions: up, down, left, and right. However, there are obstacles (walls) at states $S_{14}, S_{20}, S_{21}$ and $S_{27}$ that the agent cannot pass through, and a pit at state $S_{16}$ where the agent would get stuck. The objective is modeled by assigning a reward to each state: the pit has a reward of -1000, and the end goal a reward of 10. Passing through any other state has a reward of -1. The agent receives the reward immediately upon entering a state.
+ The episode ends when the agent reaches either the end goal or the pit.
+
+
+```{python}
+#| echo: false
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import ListedColormap
+
+# 1. Environment Setup (matching the code logic)
+GRID_SIZE = 6
+STATES = GRID_SIZE * GRID_SIZE
+
+# Define locations
+GOAL_STATES = [35]
+INIT_STATES = [0]
+PIT_STATES = [16]      # NEW
+OBSTACLES = [14, 20, 21, 27]
+GOAL_REWARD = 10
+PIT_REWARD = -1000
+
+# Create a grid for visualization
+# 0: empty, 1: obstacle, 2: goal, 3: pit, 4: initial state
+grid_vis = np.zeros((GRID_SIZE, GRID_SIZE))
+
+for obs in OBSTACLES:
+    grid_vis[divmod(obs, GRID_SIZE)] = 1
+
+for gs in GOAL_STATES:
+    grid_vis[divmod(gs, GRID_SIZE)] = 2
+
+for ps in PIT_STATES:
+    grid_vis[divmod(ps, GRID_SIZE)] = 3
+
+for init in INIT_STATES:
+    grid_vis[divmod(init, GRID_SIZE)] = 4
+
+# 2. Plotting
+fig, ax = plt.subplots(figsize=(7, 7))
+
+# Custom colormap
+# 0: white (empty), 1: gray (obstacle), 2: lightgreen (goal), 3: salmon (pit), 4: lightblue (start)
+cmap = ListedColormap(['white', 'gray', 'lightgreen', 'salmon', 'lightblue'])
+
+# plot the grid
+ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], origin='upper')
+
+# Draw thick grid lines
+ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.grid(which='both', color='black', linestyle='-', linewidth=2)
+
+# Label the states
+for i in range(STATES):
+    r, c = divmod(i, GRID_SIZE)
+    # Convert grid row to plot y (origin='upper' requires mapping)
+    y_pos = GRID_SIZE - r - 0.5
+    x_pos = c + 0.5
+    
+    label = f"S{i}"
+    
+    # Add status labels
+    if i in OBSTACLES:
+        label += "\n(Wall)"
+    elif i in GOAL_STATES:
+        label += "\n(Goal)"
+    elif i in PIT_STATES:
+        label += "\n(Pit)"
+    elif i in INIT_STATES:
+        label += "\n(Start)"
+    
+    # Decide text color based on background darkness
+    text_color = 'white' if i in OBSTACLES else 'black'
+    
+    ax.text(x_pos, y_pos, label, ha='center', va='center', 
+            fontsize=11, fontweight='bold', color=text_color)
+
+# Clean up axes
+ax.set_xticklabels([])
+ax.set_yticklabels([])
+ax.set_title("Gridworld with obstacles and a pit", fontsize=12, fontweight='bold')
+
+plt.show()
+```
+
+## Solution of the Bellman value equation by backward recursion
+
+The value of state $s$ is the maximum over all possible action of the sum of the current reward plus the discounted value of the resulting next state:
+
+$$
+V(s) = \max_a (R(s,a) + \gamma V(s'))
+$$
+
+where:
+
+$$
+\begin{align*}
+R(s,a) & \ \ \text{reward received when taking action $a$ in state $s$,} \\
+\gamma & \ \ \text{discount factor, and} \\
+s' & \ \ \text{next state resulting from taking action $a$ in state $s$.}
+\end{align*}
+$$
+
+We repeatedly use the following helper function to compute the next state $s'$ and reward $R(s,a)$ for a given state and action.
+
+```{python}
+def move(s, a_idx):
+    """
+    Returns the next state and reward for taking action a_idx in state s.
+    """
+    row, col = divmod(s, GRID_SIZE)
+    dr, dc = ACTIONS[a_idx]
+    nr, nc = max(0, min(GRID_SIZE-1, row + dr)), max(0, min(GRID_SIZE-1, col + dc))
+    next_s = nr * GRID_SIZE + nc
+
+    if next_s in OBSTACLES: next_s = s
+
+    if next_s in GOAL_STATES: reward = GOAL_REWARD
+    elif next_s in PIT_STATES: reward = PIT_REWARD
+    else: reward = -1
+
+    return next_s, reward
+```
+It is convenient to treat the Gridworld as a directed graph, where an edge exists from state $s$ to state $s'$ if there is an action that can take the agent from $s$ to $s'$. The reward for taking that action is the reward of the resulting state $s'$.
+
+```{python}
+# Grid Setup
+TERMINAL_STATES = {35: GOAL_REWARD, 16: PIT_REWARD} # {state: reward}
+GAMMA = 0.9
+ACTIONS = [(-1,0), (1,0), (0,-1), (0,1)]  # Up, Down, Left, Right
+
+# Precompute Predecessors (The Graph)
+predecessors = {i: [] for i in range(STATES)}
+for s in range(STATES):
+    if s in TERMINAL_STATES or s in OBSTACLES: continue
+    r, c = divmod(s, GRID_SIZE)
+    for a in ACTIONS:
+        nr, nc = max(0, min(GRID_SIZE-1, r + a[0])), max(0, min(GRID_SIZE-1, c + a[1]))
+        ns = nr * GRID_SIZE + nc
+        if ns != s and ns not in OBSTACLES:
+            predecessors[ns].append(s)
+```
+
+As an illustration, the predecessors of the states in the first row are:
+
+```{python}
+#| echo: false
+for s in range(GRID_SIZE):
+    print(f"S{s}: {predecessors[s]}")
+```
+
+We can now use backward recursion to solve the Bellman value equation. We start from the terminal states and propagate their values backward to their predecessors, updating the value of each state according to the Bellman update rule. This process continues until we have updated all reachable states.
+
+There are cycles in the graph, but a path that includes a cycle will never be optimal, since each step incurs a cost of -1. Since we only update a state if we find a better value, the recursion will eventually terminate when no more updates are possible.
+The value of the initial state $S_0$ will be the optimal value for that state, and the values of all other states will reflect the optimal return from those states under the optimal policy. The result is stored in the value table V. With this value table, we can derive the optimal path by choosing the action that leads to the neighboring state with the highest value.
+
+```{python}
+# Value Table
+V = np.full(STATES, -np.inf)
+for s, r in TERMINAL_STATES.items():
+    V[s] = r
+
+def backward_update(current_state):
+    """
+    Recursively propagates value from a state to its ancestors.
+    """
+    current_val = V[current_state]
+    for prev in predecessors[current_state]:
+        # Bellman: V(prev) = max(V(prev), step_reward + gamma * V(current))
+        step_reward = -1
+        new_val = step_reward + GAMMA * current_val
+        
+        if new_val > V[prev]:
+            V[prev] = new_val
+            # Continue recursion backward only if we found a better path
+            backward_update(prev)
+
+# backward recursion, starting at the terminal state
+backward_update(GOAL_STATES[0])
+```
+
+```{python}
+#| echo: false
+V_display = V.reshape(GRID_SIZE,GRID_SIZE).copy()
+
+for obs in OBSTACLES:
+    V_display[divmod(obs, GRID_SIZE)] = np.nan
+
+from IPython.display import display, Markdown
+
+latex_str = "\\begin{bmatrix}\n"
+for row in V_display:
+    row_str = ["\\text{Wall}" if np.isnan(x) else f"{x:.1f}" for x in row]
+    latex_str += " & ".join(row_str) + " \\\\\n"
+latex_str += "\\end{bmatrix}"
+
+display(Markdown(f"**Optimal State Values:**\n\n$$\nV = {latex_str}\n$$"))
+```
+
+We can now determine the optimal path from the initial state to the goal, using the predecessor table computed earlier.
+
+
+```{python}
+def get_next_states(s):
+    """Returns valid next states from state s."""
+    next_states = []
+    for a in ACTIONS:
+        r, c = divmod(s, GRID_SIZE)
+        nr, nc = max(0, min(GRID_SIZE-1, r + a[0])), max(0, min(GRID_SIZE-1, c + a[1]))
+        ns = nr * GRID_SIZE + nc
+        if ns != s and ns not in OBSTACLES and ns <= STATES-1:
+            next_states.append(ns)
+    return next_states
+
+# Extracting the optimal path from S0 to the goal
+current_state = 0
+optimal_path = [current_state]  
+while current_state != GOAL_STATES[0]:
+    next_states = get_next_states(current_state)
+    if not next_states:
+        break
+    max_index, max_value = max(enumerate(V[next_states]), key=lambda x: x[1])
+    current_state = next_states[max_index]
+    optimal_path.append(current_state)
+```
+One optimal path is pictured below.
+
+```{python}
+#| label: draw-optimal-path
+#| echo: false
+
+def draw_optimal_path(path, title):
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], origin='upper')
+    ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
+    ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
+    ax.grid(which='both', color='black', linestyle='-', linewidth=2)
+
+    for i in range(STATES):
+        r, c = divmod(i, GRID_SIZE)
+        y_pos = GRID_SIZE - r - 0.5
+        x_pos = c + 0.5
+        label = f"S{i}"
+        if i in OBSTACLES: label += "\n(Wall)"
+        elif i in GOAL_STATES: label += "\n(Goal)"
+        elif i in PIT_STATES: label += "\n(Pit)"
+        elif i in INIT_STATES: label += "\n(Start)"
+        text_color = 'white' if i in OBSTACLES else 'black'
+        ax.text(x_pos, y_pos, label, ha='center', va='center', fontsize=11, fontweight='bold', color=text_color)
+
+    for i in range(len(path) - 1):
+        s1 = path[i]
+        s2 = path[i+1]
+        r1, c1 = divmod(s1, GRID_SIZE)
+        y1, x1 = GRID_SIZE - r1 - 0.5, c1 + 0.5
+        r2, c2 = divmod(s2, GRID_SIZE)
+        y2, x2 = GRID_SIZE - r2 - 0.5, c2 + 0.5
+        
+        if s1 == s2:
+            ax.annotate("", xy=(x1+0.05, y1+0.1), xytext=(x1, y1),
+                        arrowprops=dict(arrowstyle="->,head_width=0.3,head_length=0.3", connectionstyle="arc3,rad=-2", color="blue", lw=2, shrinkA=10, shrinkB=10))
+        else:
+            ax.annotate("", xy=(x2, y2), xytext=(x1, y1), 
+                        arrowprops=dict(arrowstyle="->,head_width=0.4,head_length=0.4", color="blue", lw=3, shrinkA=15, shrinkB=15))
+
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_title(title, fontsize=12, fontweight='bold')
+    plt.show()
+
+draw_optimal_path(optimal_path, "Optimal Path (Deterministic)")
+```
+
+## Solution of the Bellman Optimality equation
+
+In the deterministic case, the MDP action-value function $Q(s,a)$ is defined as the return of taking action $a$ in state $s$ and thereafter following the optimal policy:
+$$
+Q(s,a) = R(s,a) + \gamma \max_{a'} Q(s',a')
+$$  
+where $s'$ is the next state resulting from taking action $a$ in state $s$. The state value function $V(s)$ is the optimal over all actions:
+$$
+V(s) = \max_a Q(s,a)
+$$
+
+
+
+
+We look for the optimal value function $Q^*(s,a)$, which satisfies:
+
+$$
+Q^*(s,a) = R(s,a) + \gamma \max_{a'} Q^*(s',a')
+$$
+
+The optimal policy $\pi^*(s)$ will then be given by:
+$$
+\pi^*(s) = \arg\max_a Q^*(s,a)
+$$
+
+Let $\mathcal{Q}$  be the space of all possible Q-tables (bounded real-valued functions over S×A). We define the Bellman operator $\mathcal{T}$ as:
+$$
+(\mathcal{T} \mathcal{Q})(s,a)=R(s,a)+\gamma\max_{a'} Q(s',a')
+$$
+
+This operator takes an existing Q-table and produces a new one by performing a one-step lookahead.
+
+We next show that $\mathcal{T}$ is a contraction mapping.
+
+Consider two Q-tables $Q_1$ and $Q_2$. For any $(s, a)$:
+
+$$
+|(\mathcal{T} Q_1)(s,a) - (\mathcal{T} Q_2)(s,a)| = \gamma | \max_{a'} Q_1(s',a') - \max_{a'} Q_2(s',a') |
+$$
+
+Using the fact that $|\max_x f(x) - \max_x g(x)| \leq \max_x |f(x) - g(x)|$, we can further bound this by:
+$$
+|(\mathcal{T} Q_1)(s,a) - (\mathcal{T} Q_2)(s,a)| \leq \gamma \max_{a'} |Q_1(s',a') - Q_2(s',a')|
+$$
+
+or,
+$$
+\|\mathcal{T} Q_1 - \mathcal{T} Q_2\|_\infty \leq \gamma \|Q_1 - Q_2\|_\infty
+$$
+
+Since $\gamma < 1$, this shows that $\mathcal{T}$ is a contraction mapping with respect to the supremum norm. By the Banach fixed-point theorem, this implies that $\mathcal{T}$ has a unique fixed point in $\mathcal{Q}$, and that iteratively applying $\mathcal{T}$ will converge to this fixed point.
+
+We start with the initial guess $Q(s,a) = 0$ and repeatedly applying the update rule until convergence:
+$$
+Q_{k+1}(s,a) \leftarrow R(s,a) + \gamma \max_{a'} Q_k(s',a')
+$$
+
+As expected, the optimal Q-values are the same as the optimal state values computed earlier.
+
+```{python}
+THRESHOLD = 1e-10
+# Initialize Q-table
+Q = np.zeros((STATES, len(ACTIONS)))
+
+# 1. Iteration Loop
+iter_count = 0
+while True:
+    delta = 0
+    Q_old = Q.copy()
+    
+    for s in range(STATES):
+        if s in TERMINAL_STATES or s in OBSTACLES:
+            continue
+            
+        for a_idx in range(len(ACTIONS)):
+            next_s, reward = move(s, a_idx)
+            
+            # The Q-update: reward + discounted max value of next state
+            new_q = reward + GAMMA * np.max(Q_old[next_s])
+            
+            delta = max(delta, abs(new_q - Q[s, a_idx]))
+            Q[s, a_idx] = new_q
+            
+    if delta < THRESHOLD:
+        break
+    
+    iter_count += 1
+
+print(f"Converged after {iter_count} iterations.")
+
+# 2. Policy Extraction
+# argmax across the action dimension (axis 1)
+policy = np.argmax(Q, axis=1)
+print("Optimal Policy (0:U, 1:D, 2:L, 3:R):")
+print(policy.reshape(GRID_SIZE, GRID_SIZE))
+
+# 3. Derive the optimal path from S0 to goal using the optimal policy
+current_state = 0
+optimal_path = [current_state]
+visited_states = set([current_state])
+while current_state not in GOAL_STATES:
+    action_idx = policy[current_state]
+    next_state, _ = move(current_state, action_idx)
+    optimal_path.append(next_state)
+    if current_state == next_state or next_state in visited_states:
+        break  # Stop if it bumps into walls intentionally or cycles
+    visited_states.add(next_state)
+    current_state = next_state  
+print("Intended optimal path from S0:", optimal_path)
+```
+
+## Stochastic Bellman Optimality Equation
+
+Let's now consider the situation where the moves are not fully predictable. The agent intends to move in a certain direction, but the actual move is subject to some randomness. The transition probabilities are given by the following table:
+
+
+::: {.content-visible when-format="html"}
+<table class="table caption-top" style="margin-left: auto; margin-right: auto; width: 50%;">
+  <thead>
+    <tr>
+      <th rowspan="2" style="text-align: left; vertical-align: bottom;">Intended Action</th>
+      <th colspan="4" style="text-align: center;">Probability of move</th>
+    </tr>
+    <tr>
+      <th style="text-align: center;">up</th>
+      <th style="text-align: center;">down</th>
+      <th style="text-align: center;">left</th>
+      <th style="text-align: center;">right</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left;"><strong>Up</strong></td>
+      <td style="text-align: center;">80%</td>
+      <td style="text-align: center;">0%</td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">10%</td>
+    </tr>
+    <tr>
+      <td style="text-align: left;"><strong>Down</strong></td>
+      <td style="text-align: center;">0%</td>
+      <td style="text-align: center;">80%</td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">10%</td>
+    </tr>
+    <tr>
+      <td style="text-align: left;"><strong>Left</strong></td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">80%</td>
+      <td style="text-align: center;">0%</td>
+    </tr>
+    <tr>
+      <td style="text-align: left;"><strong>Right</strong></td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">0%</td>
+      <td style="text-align: center;">80%</td>
+    </tr>
+  </tbody>
+</table>
+:::
+
+::: {.content-visible when-format="pdf"}
+```{=latex}
+\begin{table}[h]
+\centering
+\begin{tabular}{l c c c c}
+\hline
+ & \multicolumn{4}{c}{Probability of move} \\
+\cline{2-5}
+Intended Action & up & down & left & right \\
+\hline
+\textbf{Up} & 80\% & 0\% & 10\% & 10\% \\
+\textbf{Down} & 0\% & 80\% & 10\% & 10\% \\
+\textbf{Left} & 10\% & 10\% & 80\% & 0\% \\
+\textbf{Right} & 10\% & 10\% & 0\% & 80\% \\
+\hline
+\end{tabular}
+\end{table}
+```
+:::
+
+
+The Bellman optimality equation for the action-value function $Q(s,a)$ now involves the expected reward over all possible next states and is given by:
+
+$$
+Q(s,a) = \sum_{s'} p(s'|s,a) \left[R(s,a,s') + \gamma \max_{a'} Q(s',a')\right]
+$$
+
+where $p(s'|s,a)$ is the probability of transitioning to state $s'$ when taking action $a$ in state $s$, and $R(s,a,s')$ is the reward received for that transition. The optimal policy $\pi^*(s)$ can still be derived from the optimal Q-values as:
+$$
+\pi^*(s) = \arg\max_a Q(s,a)
+$$
+
+The iterative update rule for Q-values in the stochastic case becomes:
+$$
+Q_{k+1}(s,a) \leftarrow \sum_{s'} p(s'|s,a) \left[R(s,a,s') + \gamma \max_{a'} Q_k(s',a')\right]
+$$
+
+```{python}
+# Initialize Q-table
+Q = np.zeros((STATES, len(ACTIONS)))
+
+def get_transition_results(s, a_idx):
+    """
+    Returns a list of (probability, next_state, reward) 
+    """
+    
+    # No transition from terminal states
+    if s in GOAL_STATES or s in OBSTACLES:
+        return [(1.0, s, 0)]
+    
+    results = []
+    # Map intended action to side-effect actions
+    slippage = {
+        0: [2, 3], # Up -> Left, Right
+        1: [2, 3], # Down -> Left, Right
+        2: [0, 1], # Left -> Up, Down
+        3: [0, 1]  # Right -> Up, Down
+    }
+    
+    # 80% Intended Action
+    results.append((0.8, *move(s, a_idx)))
+    # 10% Slip A
+    results.append((0.1, *move(s, slippage[a_idx][0])))
+    # 10% Slip B
+    results.append((0.1, *move(s, slippage[a_idx][1])))
+    
+    return results
+
+
+# 2. Stochastic Q-Iteration Loop
+iter_count = 0
+while True:
+    delta = 0
+    Q_old = Q.copy()
+    
+    for s in range(STATES):
+        if s in GOAL_STATES or s in OBSTACLES:
+            continue
+            
+        for a_idx in range(len(ACTIONS)):
+            # Calculate Expected Value: Sum of p * (r + gamma * maxQ)
+            expected_value = 0
+            outcomes = get_transition_results(s, a_idx)
+            
+            for prob, next_s, reward in outcomes:
+                expected_value += prob * (reward + GAMMA * np.max(Q_old[next_s]))
+            
+            delta = max(delta, abs(expected_value - Q[s, a_idx]))
+            Q[s, a_idx] = expected_value
+            
+    if delta < THRESHOLD:
+        break
+    iter_count += 1
+
+print(f"Converged after {iter_count} iterations.")
+
+# 3. Policy Extraction
+policy = np.argmax(Q, axis=1).reshape(GRID_SIZE, GRID_SIZE)
+print("Optimal Policy in a Stochastic World:")
+print(policy)
+```
+
+The figure below shows the optimal policy in the stochastic case, where the arrows indicate the optimal action for each state, and the value of the best action is displayed below the arrow.
+
+```{python}
+#| echo: false
+
+def draw_policy(Q, grid_size=GRID_SIZE):
+    fig, ax = plt.subplots(figsize=(8, 8))
+    
+    # Action arrows mapping: 0:U, 1:D, 2:L, 3:R
+    # (dx, dy) format for plt.arrow
+    arrows = {0: (0, 0.3), 1: (0, -0.3), 2: (-0.3, 0), 3: (0.3, 0)}
+
+    for s in range(grid_size * grid_size):
+        row, col = divmod(s, grid_size)
+        # Convert grid coordinates to plot coordinates (y is inverted)
+        y, x = grid_size - 1 - row, col
+        
+        # Draw cell background
+        if s in GOAL_STATES:
+            color = '#66bb6a' # Green
+            label = "GOAL"
+        elif s in PIT_STATES:
+            color = '#ef5350' # Red
+            label = "PIT"
+        elif s in OBSTACLES:
+            color = '#78909c' # Gray
+            label = "WALL"
+        else:
+            color = 'white'
+            label = f"S{s}"
+
+        rect = plt.Rectangle([x - 0.5, y - 0.5], 1, 1, facecolor=color, edgecolor='black')
+        ax.add_patch(rect)
+        ax.text(x, y + 0.3, label, ha='center', va='center', fontweight='bold')
+
+        # Draw Policy Arrows (only for non-terminal, non-obstacle states)
+        if s not in GOAL_STATES and s not in PIT_STATES and s not in OBSTACLES:
+            best_action = np.argmax(Q[s])
+            dx, dy = arrows[best_action]
+            ax.arrow(x, y, dx, dy, head_width=0.1, head_length=0.1, fc='black', ec='black')
+            
+            # Optional: Display the max Q-value
+            ax.text(x, y - 0.3, f"V:{Q[s, best_action]:.1f}", ha='center', size=8)
+
+    # Grid formatting
+    ax.set_xticks(np.arange(grid_size))
+    ax.set_yticks(np.arange(grid_size))
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_xlim(-0.5, grid_size - 0.5)
+    ax.set_ylim(-0.5, grid_size - 0.5)
+    ax.set_aspect('equal')
+    ax.set_title("Stochastic Gridworld: Risk-Averse Policy", pad=20)
+    plt.grid(False)
+    plt.show()
+
+# Execute drawing
+draw_policy(Q)
+``` 
+
+Of particular interest are the optimal decisions in $S_{15}$ and $S_{17}$, which are adjacent to the pit at $S_{16}$. Regarding $S_{15}$, the optimal action in the deterministic case is to move up; however, in the stochastic case, moving up involves a 10% chance of falling into the pit. The optimal strategy is therefore to (repeatedly) attempt to move left, with a 10% chance of slipping up but no chance of falling into the pit. Similarly, in $S_{17}$, the optimal action in the deterministic case is to move down, but this move has a 10% chance of slipping to the left into the pit; the optimal action is to (repeatedly) attempt to move right until the agent moves down to $S_{23}$. 

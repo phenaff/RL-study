@@ -1,0 +1,9 @@
+project:
+  title: "RL-study"
+  preview:
+    port: 4242
+    browser: true
+    watch-inputs: true
+
+
+
