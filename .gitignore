@@ -6,6 +6,7 @@
 *_files/
 *.html
 *.pdf
+*.png
 
 # Python
 # Byte-compiled / optimized / DLL files
