@@ -3,11 +3,14 @@ title: "Dynamic Programming"
 format: pdf
 ---
 
+This notebook illustrates the basic algorithms of dynamic programming using the classical "gridworld" environment.
+We first consider the deterministic case where the environment is known, i.e. the actions that are selected are actually carried out, and the rewards are known. Next, we consider the case where there is some uncertainty regarding the outcome of an action: the agent chooses an action, but the actual action that is carried out is different from the one that was chosen. We however know the probabilities of the different outcomes. 
+In another notebook, we will consider the case where the agent does not know the transition probabilities and has to learn them from experience. 
+
 ## The test case
 
-We use the classical "gridworld" environment to illustrate the basic algorithms of dynamic programming. 
 The environment is a 6x6 grid, where the agent starts at the top-left corner (state $S_0$) and aims to reach the bottom-right corner (state $S_{35}$). The agent can move in four directions: up, down, left, and right. However, there are obstacles (walls) at states $S_{14}, S_{20}, S_{21}$ and $S_{27}$ that the agent cannot pass through, and a pit at state $S_{16}$ where the agent would get stuck. The objective is modeled by assigning a reward to each state: the pit has a reward of -1000, and the end goal a reward of 10. Passing through any other state has a reward of -1. The agent receives the reward immediately upon entering a state.
- The episode ends when the agent reaches either the end goal or the pit.
+ The episode ends when the agent reaches either the end goal or the pit. Maximixing the reward is equivalent to finding the shortest feasible path to the goal.
 
 
 ```{python}
