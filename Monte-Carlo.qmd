@@ -1,0 +1,187 @@
+
+---
+title: "Monte Carlo Control"
+format: pdf
+---
+
+This notebook illustrates the basic algorithms of Monte Carlo control methods using the classical "gridworld" environment. We consider the case where the agent does not know the transition probabilities and has to learn them from experience. 
+
+The general idea is to perform a Generalized Policy Iteration (GPI) algorithm, where we alternate between policy evaluation and policy improvement steps. 
+
+## The test case
+
+The environment is a 6x6 grid, where the agent starts at the top-left corner (state $S_0$) and aims to reach the bottom-right corner (state $S_{35}$). The agent can move in four directions: up, down, left, and right. However, there are obstacles (walls) at states $S_{14}, S_{20}, S_{21}$ and $S_{27}$ that the agent cannot pass through, and a pit at state $S_{16}$ where the agent would get stuck. The objective is modeled by assigning a reward to each state: the pit has a reward of -1000, and the end goal a reward of 10. Passing through any other state has a reward of -1. The agent receives the reward immediately upon entering a state.
+ The episode ends when the agent reaches either the end goal or the pit. Maximixing the reward is equivalent to finding the shortest feasible path to the goal.
+
+
+```{python}
+#| echo: false
+#| fig-align: center
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import ListedColormap
+
+# 1. Environment Setup (matching the code logic)
+GRID_SIZE = 6
+STATES = GRID_SIZE * GRID_SIZE
+
+# Define locations
+GOAL_STATES = [35]
+INIT_STATES = [0]
+PIT_STATES = [16]      # NEW
+OBSTACLES = [14, 20, 21, 27]
+GOAL_REWARD = 10
+PIT_REWARD = -1000
+
+# Create a grid for visualization
+# 0: empty, 1: obstacle, 2: goal, 3: pit, 4: initial state
+grid_vis = np.zeros((GRID_SIZE, GRID_SIZE))
+
+for obs in OBSTACLES:
+    grid_vis[divmod(obs, GRID_SIZE)] = 1
+
+for gs in GOAL_STATES:
+    grid_vis[divmod(gs, GRID_SIZE)] = 2
+
+for ps in PIT_STATES:
+    grid_vis[divmod(ps, GRID_SIZE)] = 3
+
+for init in INIT_STATES:
+    grid_vis[divmod(init, GRID_SIZE)] = 4
+
+# 2. Plotting
+fig, ax = plt.subplots(figsize=(4, 4))
+
+# Custom colormap
+# 0: white (empty), 1: gray (obstacle), 2: lightgreen (goal), 3: salmon (pit), 4: lightblue (start)
+cmap = ListedColormap(['white', 'gray', 'lightgreen', 'salmon', 'lightblue'])
+
+# plot the grid
+ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], 
+          origin='upper')
+
+# Draw thick grid lines
+ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.grid(which='both', color='black', linestyle='-', linewidth=2)
+
+# Label the states
+for i in range(STATES):
+    r, c = divmod(i, GRID_SIZE)
+    # Convert grid row to plot y (origin='upper' requires mapping)
+    y_pos = GRID_SIZE - r - 0.5
+    x_pos = c + 0.5
+    
+    label = f"S{i}"
+    
+    # Add status labels
+    if i in OBSTACLES:
+        label += "\n(Wall)"
+    elif i in GOAL_STATES:
+        label += "\n(Goal)"
+    elif i in PIT_STATES:
+        label += "\n(Pit)"
+    elif i in INIT_STATES:
+        label += "\n(Start)"
+    
+    # Decide text color based on background darkness
+    text_color = 'white' if i in OBSTACLES else 'black'
+    
+    ax.text(x_pos, y_pos, label, ha='center', va='center', 
+            fontsize=11, fontweight='normal', color=text_color)
+
+# Clean up axes
+ax.set_xticklabels([])
+ax.set_yticklabels([])
+ax.set_title("Gridworld with obstacles and a pit", fontsize=11, 
+             fontweight='normal')
+
+plt.show()
+```
+
+
+The moves are not fully predictable. The agent intends to move in a certain direction, but the actual move is subject to some randomness. 
+The transition probabilities are given by the following table, but the agent does not know them:
+
+::: {.content-visible when-format="html"}
+<table class="table caption-top" style="margin-left: auto; margin-right: auto; width: 50%;">
+  <thead>
+    <tr>
+      <th rowspan="2" style="text-align: left; vertical-align: bottom;">Intended Action</th>
+      <th colspan="4" style="text-align: center;">Probability of move</th>
+    </tr>
+    <tr>
+      <th style="text-align: center;">up</th>
+      <th style="text-align: center;">down</th>
+      <th style="text-align: center;">left</th>
+      <th style="text-align: center;">right</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left;"><strong>Up</strong></td>
+      <td style="text-align: center;">80%</td>
+      <td style="text-align: center;">0%</td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">10%</td>
+    </tr>
+    <tr>
+      <td style="text-align: left;"><strong>Down</strong></td>
+      <td style="text-align: center;">0%</td>
+      <td style="text-align: center;">80%</td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">10%</td>
+    </tr>
+    <tr>
+      <td style="text-align: left;"><strong>Left</strong></td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">80%</td>
+      <td style="text-align: center;">0%</td>
+    </tr>
+    <tr>
+      <td style="text-align: left;"><strong>Right</strong></td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">10%</td>
+      <td style="text-align: center;">0%</td>
+      <td style="text-align: center;">80%</td>
+    </tr>
+  </tbody>
+</table>
+:::
+
+::: {.content-visible when-format="pdf"}
+```{=latex}
+\begin{table}[h]
+\centering
+\begin{tabular}{l c c c c}
+\hline
+ & \multicolumn{4}{c}{Probability of move} \\
+\cline{2-5}
+Intended Action & up & down & left & right \\
+\hline
+\textbf{Up} & 80\% & 0\% & 10\% & 10\% \\
+\textbf{Down} & 0\% & 80\% & 10\% & 10\% \\
+\textbf{Left} & 10\% & 10\% & 80\% & 0\% \\
+\textbf{Right} & 10\% & 10\% & 0\% & 80\% \\
+\hline
+\end{tabular}
+\end{table}
+```
+:::
+
+## Monte Carlo Estimation of Action-Values
+
+See Sutton & Barto, Chapter 5.1 and 5.2. for motivating the approach. The key points are:
+
+- In the absence of a model, it is necessary to estimate $Q_{\pi}(s,a)$, the expected return starting from state $s$, taking action $a$ and following policy $\pi$ thereafter. Estimating the value function $V_{\pi}(s)$ is not sufficient, because we need to know the value of taking action $a$ in state $s$ to be able to improve the policy.
+
+- The value of a state-action pair is estimated by simulating many episodes of a policy and averaging the returns of all episodes that start from that state-action pair.
+
+- There are two variants of Monte Carlo estimation: first-visit and every-visit. Both converge to the true value of the state-action pair under the policy $\pi$.
+
+- The first-visit MC method estimates the value of a state-action pair as the average of the returns that followed the first visit to it.
+
+- The every-visit MC method estimates the value of a state-action pair as the average of the returns that followed all the visits to it.
+
+- We need to estimate the value of each state-action pair, not just the ones that seem favorable, this is the general requirement of maintaining exploration. We can do this by randomly choosing the initial state-action pair and then following the policy $\pi$ until the end of the episode.
