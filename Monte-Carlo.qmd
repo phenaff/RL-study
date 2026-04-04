@@ -6,7 +6,47 @@ format: pdf
 
 This notebook illustrates the basic algorithms of Monte Carlo control methods using the classical "gridworld" environment. We consider the case where the agent does not know the transition probabilities and has to learn them from experience. 
 
-The general idea is to perform a Generalized Policy Iteration (GPI) algorithm, where we alternate between policy evaluation and policy improvement steps. 
+The general idea is to perform a Generalized Policy Iteration (GPI) algorithm, where we alternate between policy evaluation and policy improvement steps.
+
+
+
+## Monte Carlo Estimation of Action-Values (Policy Evaluation)
+
+See Sutton & Barto, Chapter 5.1 and 5.2. for motivating the approach. The key points are:
+
+- In the absence of a model, it is necessary to estimate $Q_{\pi}(s,a)$, the expected return starting from state $s$, taking action $a$ and following policy $\pi$ thereafter. Estimating the value function $V_{\pi}(s)$ is not sufficient, because we need to know the value of taking action $a$ in state $s$ to be able to improve the policy.
+
+- The value of a state-action pair is estimated by simulating many episodes of a policy and averaging the returns of all episodes that start from that state-action pair.
+
+- There are two variants of Monte Carlo estimation: first-visit and every-visit. Both converge to the true value of the state-action pair under the policy $\pi$.
+
+- The first-visit MC method estimates the value of a state-action pair as the average of the returns that followed the first visit to it.
+
+- The every-visit MC method estimates the value of a state-action pair as the average of the returns that followed all the visits to it.
+
+- We need to estimate the value of each state-action pair, not just the ones that seem favorable, this is the general requirement of maintaining exploration. We can do this by randomly choosing the initial state-action pair and then following the policy $\pi$ until the end of the episode.
+
+## Policy Improvement
+
+Policy improvement is performed by making the policy greedy with respect to the current action-value function $Q(s,a)$.
+
+$$
+\pi(s) = \arg \max_a Q(s,a)
+$$
+
+The policy improvement interation constructs a new policy $\pi_{k+1}$ as the greedy policy with respect to $Q_{\pi_k}(s,a)$, and we have:
+
+$$
+\begin{aligned}
+Q_{\pi_k}(s, \pi_{k+1}(s)) & = \max_a Q_{\pi_k}(s,a) \\
+                       & \geq Q_{\pi_k}(s, \pi_k(s)) \\
+                       & \geq V_{\pi_k}(s)
+\end{aligned}
+$$
+
+The policy improvement theorem insures that each $\pi_{k+1}$ is uniformly better or equal to $\pi_k$.
+In practice, we do not attempt to get a complete policy evaluation before initiating a policy improvement step. Instead, it is sufficient to alternate between policy evaluation and policy improvement at every episode. We demonstrate this concept with an algorithm called "Monte Carlo with Exploring Starts".
+
 
 ## The test case
 
@@ -170,18 +210,99 @@ Intended Action & up & down & left & right \\
 ```
 :::
 
-## Monte Carlo Estimation of Action-Values
+## Monte Carlo with Exploring Starts
 
-See Sutton & Barto, Chapter 5.1 and 5.2. for motivating the approach. The key points are:
+The first component of the algorithm is the generation of episodes, given a policy.
+```{python}
+import numpy as np
 
-- In the absence of a model, it is necessary to estimate $Q_{\pi}(s,a)$, the expected return starting from state $s$, taking action $a$ and following policy $\pi$ thereafter. Estimating the value function $V_{\pi}(s)$ is not sufficient, because we need to know the value of taking action $a$ in state $s$ to be able to improve the policy.
+ACTIONS = [(-1,0), (1,0), (0,-1), (0,1)]  # Up, Down, Left, Right
 
-- The value of a state-action pair is estimated by simulating many episodes of a policy and averaging the returns of all episodes that start from that state-action pair.
+def move(s, a_idx):
+    """
+    Returns the next state and reward for taking action a_idx in state s.
+    """
+    row, col = divmod(s, GRID_SIZE)
+    dr, dc = ACTIONS[a_idx]
+    nr = max(0, min(GRID_SIZE-1, row + dr))
+    nc = max(0, min(GRID_SIZE-1, col + dc))
+    next_s = nr * GRID_SIZE + nc
 
-- There are two variants of Monte Carlo estimation: first-visit and every-visit. Both converge to the true value of the state-action pair under the policy $\pi$.
+    if next_s in OBSTACLES: 
+        next_s = s
 
-- The first-visit MC method estimates the value of a state-action pair as the average of the returns that followed the first visit to it.
+    if next_s in GOAL_STATES: 
+        reward = GOAL_REWARD
+    elif next_s in PIT_STATES: 
+        reward = PIT_REWARD
+    else: 
+        reward = -1
 
-- The every-visit MC method estimates the value of a state-action pair as the average of the returns that followed all the visits to it.
+    return next_s, reward
 
-- We need to estimate the value of each state-action pair, not just the ones that seem favorable, this is the general requirement of maintaining exploration. We can do this by randomly choosing the initial state-action pair and then following the policy $\pi$ until the end of the episode.
+def get_transition_results(s, a_idx):
+    """
+    Returns a list of (probability, next_state, reward) 
+    """
+    if s in GOAL_STATES or s in PIT_STATES or s in OBSTACLES:
+        return [(1.0, s, 0)]
+    
+    results = []
+    # Map intended action to side-effect actions
+    slippage = {
+        0: [2, 3], # Up -> Left, Right
+        1: [2, 3], # Down -> Left, Right
+        2: [0, 1], # Left -> Up, Down
+        3: [0, 1]  # Right -> Up, Down
+    }
+    
+    # 80% Intended Action
+    results.append((0.8, *move(s, a_idx)))
+    # 10% Slip A
+    results.append((0.1, *move(s, slippage[a_idx][0])))
+    # 10% Slip B
+    results.append((0.1, *move(s, slippage[a_idx][1])))
+    
+    return results
+
+def generate_episode(policy, max_steps=100):
+    """
+    Generates an episode using a given policy.
+    policy: an array of 4 probabilities corresponding to [Up, Down, Left, Right].
+    """
+    # For Monte Carlo with Exploring Starts, we can start at a random valid state
+    valid_states = [s for s in range(STATES) 
+                    if s not in GOAL_STATES and s not in PIT_STATES and s not in OBSTACLES]
+    
+    # Start randomly for exploring starts
+    current_state = np.random.choice(valid_states)
+    episode = []
+    
+    for _ in range(max_steps):
+        # Sample the intended action using the given policy probabilities
+        action = np.random.choice(4, p=policy)
+        
+        # Determine the outcome based on environment's transition probabilities
+        outcomes = get_transition_results(current_state, action)
+        probs = [out[0] for out in outcomes]
+        
+        # Sample the actual transition
+        idx = np.random.choice(len(outcomes), p=probs)
+        _, next_state, reward = outcomes[idx]
+        
+        # Record sequence: state, action, reward
+        episode.append((current_state, action, reward))
+        
+        if next_state in GOAL_STATES or next_state in PIT_STATES:
+            break
+            
+        current_state = next_state
+        
+    return episode
+
+# Quick test with a random policy (equiprobable)
+random_policy = [0.25, 0.25, 0.25, 0.25]
+episode = generate_episode(random_policy)
+print(f"Generated episode length: {len(episode)}")
+print("First few steps: ", episode[:5])
+```
