@@ -212,15 +212,24 @@ Intended Action & up & down & left & right \\
 
 ## Monte Carlo with Exploring Starts
 
-The first component of the algorithm is the generation of episodes, given a policy.
-```{python}
-import numpy as np
+The first component of the algorithm is the generation of episodes, given a policy. 
 
+```{python}
 ACTIONS = [(-1,0), (1,0), (0,-1), (0,1)]  # Up, Down, Left, Right
+
+slippage = {
+        0: [0, 2, 3], # Up -> Up, Left, Right
+        1: [1, 2, 3], # Down -> Down, Left, Right
+        2: [2, 0, 1], # Left -> Left, Up, Down
+        3: [3, 0, 1]  # Right -> Right, Up, Down
+}
+
+# probabilities of move consistent with action and of slippage
+probs = [0.8, 0.1, 0.1]
 
 def move(s, a_idx):
     """
-    Returns the next state and reward for taking action a_idx in state s.
+    Returns the next state and reward for an action a_idx in state s.
     """
     row, col = divmod(s, GRID_SIZE)
     dr, dc = ACTIONS[a_idx]
@@ -240,42 +249,25 @@ def move(s, a_idx):
 
     return next_s, reward
 
+    
 def get_transition_results(s, a_idx):
     """
-    Returns a list of (probability, next_state, reward) 
+    Returns the actual result of an action, taking slippage into account.
     """
     if s in GOAL_STATES or s in PIT_STATES or s in OBSTACLES:
-        return [(1.0, s, 0)]
+        return s, 0
     
-    results = []
-    # Map intended action to side-effect actions
-    slippage = {
-        0: [2, 3], # Up -> Left, Right
-        1: [2, 3], # Down -> Left, Right
-        2: [0, 1], # Left -> Up, Down
-        3: [0, 1]  # Right -> Up, Down
-    }
+    # Sample slippage
+    idx = np.random.choice(len(slippage[a_idx]), p=probs)
+    return move(s, slippage[a_idx][idx])
     
-    # 80% Intended Action
-    results.append((0.8, *move(s, a_idx)))
-    # 10% Slip A
-    results.append((0.1, *move(s, slippage[a_idx][0])))
-    # 10% Slip B
-    results.append((0.1, *move(s, slippage[a_idx][1])))
-    
-    return results
 
-def generate_episode(policy, max_steps=100):
+def generate_episode(policy, initial_state, max_steps=100):
     """
-    Generates an episode using a given policy with an Exploring Start.
+    Generates an episode using a given policy starting from initial_state.
     policy: an array of length len(STATES) with values 0 to 3.
     """
-    # For Monte Carlo with Exploring Starts, we can start at a random valid state
-    valid_states = [s for s in range(STATES) 
-                    if s not in GOAL_STATES and s not in PIT_STATES and s not in OBSTACLES]
-    
-    # Start randomly for exploring starts
-    current_state = int(np.random.choice(valid_states))
+    current_state = initial_state
     episode = []
     
     for step in range(max_steps):
@@ -283,12 +275,7 @@ def generate_episode(policy, max_steps=100):
         action = int(policy[current_state])
         
         # Determine the outcome based on environment's transition probabilities
-        outcomes = get_transition_results(current_state, action)
-        probs = [out[0] for out in outcomes]
-        
-        # Sample the actual transition
-        idx = np.random.choice(len(outcomes), p=probs)
-        _, next_state, reward = outcomes[idx]
+        next_state, reward = get_transition_results(current_state, action)
         
         # Record sequence: state, action, reward
         episode.append((current_state, action, next_state, reward))
@@ -299,12 +286,45 @@ def generate_episode(policy, max_steps=100):
         current_state = int(next_state)
         
     return episode
+```
 
-# Quick test with a random deterministic policy
+As an illustration, let's generate three episodes starting from random initial states.
+
+```{python}
+np.random.seed(314)
 random_policy = np.random.choice(4, size=STATES)
 
+# For Monte Carlo with Exploring Starts, we can start at a random valid state
+valid_states = [s for s in range(STATES) if s not in GOAL_STATES and 
+                s not in PIT_STATES and s not in OBSTACLES]
+    
+# Start randomly for exploring starts
+initial_states = np.random.choice(valid_states, size=3, replace=False)
 # Generate 3 sample paths
-episodes = [generate_episode(random_policy) for _ in range(3)]
+episodes = [generate_episode(random_policy, i_s) for i_s in initial_states]
+```
+
+The following table summarizes the experiment: two episodes ended in terminal states, while the other one completed the intended 100 steps. The figure below illustrates the paths. The policy is represented by an arrow in each state.
+
+```{python}
+#| label: tbl-mc-exploring-starts
+#| echo: false
+
+from IPython.display import Markdown, display
+
+# Create a Markdown table showing the length of each path
+table = "| Path | Initial State | Final State | Length (Steps) |\n|:---:|:---:|:---:|:---:|\n"
+for idx, (s, ep) in enumerate(zip(initial_states, episodes)):
+    final_state = ep[-1][2] if ep else s
+    table += f"| {idx+1} | $S_{{{s}}}$ | $S_{{{final_state}}}$ | {len(ep)} |\n"
+
+display(Markdown(table))
+```
+
+```{python}
+#| label: fig-mc-exploring-starts
+#| fig-cap: "Three sample paths starting from random initial states. The policy is represented by an arrow in each state."
+#| echo: false
 
 # Plot the paths on the gridworld
 fig, ax = plt.subplots(figsize=(6, 6))
@@ -366,7 +386,6 @@ for idx, ep in enumerate(episodes):
 
 ax.set_xticklabels([])
 ax.set_yticklabels([])
-ax.set_title("3 Sample Paths with Exploring Starts", fontsize=12)
 ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1))
 
 plt.tight_layout()
