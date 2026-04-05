@@ -267,20 +267,20 @@ def get_transition_results(s, a_idx):
 
 def generate_episode(policy, max_steps=100):
     """
-    Generates an episode using a given policy.
-    policy: an array of 4 probabilities corresponding to [Up, Down, Left, Right].
+    Generates an episode using a given policy with an Exploring Start.
+    policy: an array of length len(STATES) with values 0 to 3.
     """
     # For Monte Carlo with Exploring Starts, we can start at a random valid state
     valid_states = [s for s in range(STATES) 
                     if s not in GOAL_STATES and s not in PIT_STATES and s not in OBSTACLES]
     
     # Start randomly for exploring starts
-    current_state = np.random.choice(valid_states)
+    current_state = int(np.random.choice(valid_states))
     episode = []
     
-    for _ in range(max_steps):
-        # Sample the intended action using the given policy probabilities
-        action = np.random.choice(4, p=policy)
+    for step in range(max_steps):
+        # Follow the policy
+        action = int(policy[current_state])
         
         # Determine the outcome based on environment's transition probabilities
         outcomes = get_transition_results(current_state, action)
@@ -291,18 +291,84 @@ def generate_episode(policy, max_steps=100):
         _, next_state, reward = outcomes[idx]
         
         # Record sequence: state, action, reward
-        episode.append((current_state, action, reward))
+        episode.append((current_state, action, next_state, reward))
         
         if next_state in GOAL_STATES or next_state in PIT_STATES:
             break
             
-        current_state = next_state
+        current_state = int(next_state)
         
     return episode
 
-# Quick test with a random policy (equiprobable)
-random_policy = [0.25, 0.25, 0.25, 0.25]
-episode = generate_episode(random_policy)
-print(f"Generated episode length: {len(episode)}")
-print("First few steps: ", episode[:5])
+# Quick test with a random deterministic policy
+random_policy = np.random.choice(4, size=STATES)
+
+# Generate 3 sample paths
+episodes = [generate_episode(random_policy) for _ in range(3)]
+
+# Plot the paths on the gridworld
+fig, ax = plt.subplots(figsize=(6, 6))
+
+# Plot the base grid
+cmap = ListedColormap(['white', 'gray', 'lightgreen', 'salmon', 'lightblue'])
+ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], origin='upper')
+
+ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.grid(which='both', color='black', linestyle='-', linewidth=2)
+
+# Label the states and policy arrows
+action_arrows = ['↑', '↓', '←', '→']
+for i in range(STATES):
+    r, c = divmod(i, GRID_SIZE)
+    y_pos = GRID_SIZE - r - 0.5
+    x_pos = c + 0.5
+    text_color = 'white' if i in OBSTACLES else 'black'
+    
+    label = f"S{i}"
+    # Only show the policy arrow for valid playable states
+    if i not in OBSTACLES and i not in GOAL_STATES and i not in PIT_STATES:
+        label += f"\n{action_arrows[random_policy[i]]}"
+        
+    ax.text(x_pos, y_pos, label, ha='center', va='center', 
+            fontsize=10, fontweight='bold', color=text_color, alpha=0.6)
+
+# Helper to map state to (x, y) coords in the plot
+def state_to_coords(s):
+    r, c = divmod(s, GRID_SIZE)
+    return c + 0.5, GRID_SIZE - r - 0.5
+
+colors = ['blue', 'purple', 'orange']
+for idx, ep in enumerate(episodes):
+    if not ep:
+        continue
+    
+    # Extract states from the episode: [start_state] + [next_states...]
+    path_states = [ep[0][0]] + [step[2] for step in ep]
+    
+    # Add a slight offset so paths don't completely overlap
+    offset_x = np.random.uniform(-0.15, 0.15)
+    offset_y = np.random.uniform(-0.15, 0.15)
+    
+    x_coords, y_coords = [], []
+    for s in path_states:
+        x, y = state_to_coords(s)
+        x_coords.append(x + offset_x)
+        y_coords.append(y + offset_y)
+        
+    ax.plot(x_coords, y_coords, color=colors[idx], label=f'Path {idx+1}', 
+            linewidth=2, marker='o', markersize=4, alpha=0.8)
+    
+    # Optional: draw an arrow for the final step to indicate direction
+    if len(x_coords) > 1:
+        ax.annotate('', xy=(x_coords[-1], y_coords[-1]), xytext=(x_coords[-2], y_coords[-2]),
+                    arrowprops=dict(arrowstyle="->", color=colors[idx], lw=2, shrinkA=0, shrinkB=0))
+
+ax.set_xticklabels([])
+ax.set_yticklabels([])
+ax.set_title("3 Sample Paths with Exploring Starts", fontsize=12)
+ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1))
+
+plt.tight_layout()
+plt.show()
 ```
