@@ -262,17 +262,21 @@ def get_transition_results(s, a_idx):
     return move(s, slippage[a_idx][idx])
     
 
-def generate_episode(policy, initial_state, max_steps=100):
+def generate_episode(policy, initial_state, initial_action=None, max_steps=100):
     """
     Generates an episode using a given policy starting from initial_state.
     policy: an array of length len(STATES) with values 0 to 3.
+    initial_action: Optional first action to take for exploring starts.
     """
     current_state = initial_state
     episode = []
     
     for step in range(max_steps):
-        # Follow the policy
-        action = int(policy[current_state])
+        # Follow the policy or exploring start
+        if step == 0 and initial_action is not None:
+            action = int(initial_action)
+        else:
+            action = int(policy[current_state])
         
         # Determine the outcome based on environment's transition probabilities
         next_state, reward = get_transition_results(current_state, action)
@@ -389,5 +393,96 @@ ax.set_yticklabels([])
 ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1))
 
 plt.tight_layout()
+plt.show()
+```
+
+## The Complete Algorithm: Monte Carlo with Exploring Starts
+
+Now we can put together the complete algorithm, alternating between episode generation (evaluation) and policy improvement.
+
+```{python}
+def mc_exploring_starts(num_episodes, gamma=0.9):
+    # Initialize Q(S,A) arbitrarily 
+    Q = np.zeros((STATES, 4))
+    
+    # We will use incremental average instead of keeping all returns
+    returns_count = np.zeros((STATES, 4))
+    
+    # Starting policy
+    policy = np.random.choice(4, size=STATES)
+    
+    # start from any valid state
+    valid_states = [s for s in range(STATES) if s not in GOAL_STATES and 
+                    s not in PIT_STATES and s not in OBSTACLES]
+                    
+    for _ in range(num_episodes):
+        # Exploring start
+        start_state = np.random.choice(valid_states)
+        start_action = np.random.choice(4)
+        
+        # Generate an episode
+        episode = generate_episode(policy, start_state, initial_action=start_action)
+        
+        # Collect all state-action pairs in the episode to find first visits
+        sa_pairs = [(step[0], step[1]) for step in episode]
+        first_visit_indices = {}
+        for t, sa in enumerate(sa_pairs):
+            if sa not in first_visit_indices:
+                first_visit_indices[sa] = t
+                
+        # Now go backwards to compute G
+        G = 0
+        for t in reversed(range(len(episode))):
+            s, a, next_s, r = episode[t]
+            G = gamma * G + r
+            
+            # If this is the first visit
+            if first_visit_indices[(s, a)] == t:
+                returns_count[s, a] += 1
+                # Incremental mean update: Q_{n+1} = Q_n + (1/n) * (G - Q_n)
+                Q[s, a] = Q[s, a] + (1.0 / returns_count[s, a]) * (G - Q[s, a])
+                
+                # Policy improvement
+                policy[s] = np.argmax(Q[s])
+                
+    return Q, policy
+
+np.random.seed(42)
+Q_optimal, optimal_policy = mc_exploring_starts(num_episodes=100000)
+```
+
+The figure below shows the optimal policy found, which is essentially the same as the one in Figure \ref{fig:mc-exploring-starts}. The crucial observation is that the agent corectly learned the strategy to avoid the pit. 
+
+```{python}
+#| label: fig-mc-optimal-policy
+#| fig-cap: "Optimal policy found by Monte Carlo with Exploring Starts"
+#| echo: false
+
+# Plot the optimal policy on the gridworld
+fig, ax = plt.subplots(figsize=(6, 6))
+
+ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], origin='upper')
+
+ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.grid(which='both', color='black', linestyle='-', linewidth=2)
+
+for i in range(STATES):
+    r, c = divmod(i, GRID_SIZE)
+    y_pos = GRID_SIZE - r - 0.5
+    x_pos = c + 0.5
+    text_color = 'white' if i in OBSTACLES else 'black'
+    
+    label = f"S{i}"
+    # Only show the policy arrow for valid playable states
+    if i not in OBSTACLES and i not in GOAL_STATES and i not in PIT_STATES:
+        label += f"\n{action_arrows[optimal_policy[i]]}"
+        
+    ax.text(x_pos, y_pos, label, ha='center', va='center', 
+            fontsize=10, fontweight='bold', color=text_color)
+
+ax.set_xticklabels([])
+ax.set_yticklabels([])
+
 plt.show()
 ```
