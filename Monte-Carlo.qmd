@@ -26,6 +26,36 @@ See Sutton & Barto, Chapter 5.1 and 5.2. for motivating the approach. The key po
 
 - We need to estimate the value of each state-action pair, not just the ones that seem favorable, this is the general requirement of maintaining exploration. We can do this by randomly choosing the initial state-action pair and then following the policy $\pi$ until the end of the episode.
 
+If $N$ episodes are generated, the average return for each state-action pair, $Q(s,a)$ is calculated as follows.
+
+$$ 
+Q(s,a) = \frac{1}{N(s,a)} \sum_{k=1}^{N(s,a)} G_k(s,a) 
+$$
+
+where $N(s,a)$ is the number of episodes that visit state-action pair $(s,a)$ at least once , and $G_k(s,a)$ is the return following the first visit to state-action pair $(s,a)$ in the $k$-th episode.
+Let $t_k(s,a)$ be the first time in episode $k$ that state-action pair $(s,a)$ is visited, and $T_k$ be the length of the $k$-th episode. $G_k(s,a)$ is the sum of the discounted rewards of this episode,  starting from time step $t_k(s,a)+1$ to $T_k$. 
+
+$$
+G_k(s,a) = R_{t_k(s,a)+1} + \gamma R_{t_k(s,a)+2} + \dots + \gamma^{T_k-t_k(s,a)-1} R_{T_k}
+$$
+
+The average over the episodes is computed incrementally. To implify notation, we concentrate on a single state-action pair $(s,a)$. Let $Q_n$ be the estimate of the state-action value after $n-1$ first visits.
+
+
+$$Q_n = \frac{1}{n-1} \sum_{k=1}^{n-1} G_k
+$$
+
+After another visit to the same state-action pair, we have
+
+$$
+\begin{aligned}
+Q_{n+1} &= \frac{1}{n} \sum_{k=1}^{n} G_k \\
+&= \frac{1}{n} \left( \sum_{k=1}^{n-1} G_k + G_n \right) \\
+&= \frac{1}{n} \left( (n-1)Q_n + G_n \right) \\
+&= Q_n + \frac{1}{n} (G_n - Q_n)
+\end{aligned}
+$$
+
 ## Policy Improvement
 
 Policy improvement is performed by making the policy greedy with respect to the current action-value function $Q(s,a)$.
@@ -396,9 +426,33 @@ plt.tight_layout()
 plt.show()
 ```
 
+
 ## The Complete Algorithm: Monte Carlo with Exploring Starts
 
-Now we can put together the complete algorithm, alternating between episode generation (evaluation) and policy improvement.
+The complete algorithm alternates between episode generation (evaluation) and policy improvement (Sutton and Barto, p. 99)
+
+::: {.callout-note appearance="simple" icon=false}
+**Monte Carlo ES (Exploring Starts), for estimating $\pi \approx \pi_*$**
+
+**Initialize:**
+
+- $\pi(s) \in \mathcal{A}(s)$ (arbitrarily), for all $s \in \mathcal{S}$
+- $Q(s, a) \in \mathbb{R}$ (arbitrarily), for all $s \in \mathcal{S}, a \in \mathcal{A}(s)$
+- $Returns(s, a) \leftarrow$ empty list, for all $s \in \mathcal{S}, a \in \mathcal{A}(s)$
+
+**Loop forever (for each episode):**
+
+- Choose $S_0 \in \mathcal{S}, A_0 \in \mathcal{A}(S_0)$ randomly such that all pairs have probability $> 0$
+- Generate an episode from $S_0, A_0$, following $\pi$: $S_0, A_0, R_1, S_1, A_1, \dots, S_{T-1}, A_{T-1}, R_T$
+- $G \leftarrow 0$
+- Loop for each step of episode, $t = T-1, T-2, \dots, 0$:
+  - $G \leftarrow \gamma G + R_{t+1}$
+  - Unless the pair $S_t, A_t$ appears in $S_0, A_0, S_1, A_1 \dots, S_{t-1}, A_{t-1}$:
+    - Append $G$ to $Returns(S_t, A_t)$
+    - $Q(S_t, A_t) \leftarrow \text{average}(Returns(S_t, A_t))$
+    - $\pi(S_t) \leftarrow \arg\max_a Q(S_t, a)$
+:::
+
 
 ```{python}
 def mc_exploring_starts(num_episodes, gamma=0.9):
