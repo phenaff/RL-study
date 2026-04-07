@@ -4,8 +4,8 @@ format: pdf
 ---
 
 This notebook illustrates the basic algorithms of dynamic programming using the classical "gridworld" environment.
-We first consider the deterministic case where the environment is known, i.e. the actions that are selected are actually carried out, and the rewards are known. Next, we consider the case where there is some uncertainty regarding the outcome of an action: the agent chooses an action, but the actual action that is carried out is different from the one that was chosen. We however know the probabilities of the different outcomes. 
-In another notebook, we will consider the case where the agent does not know the transition probabilities and has to learn them from experience. 
+We first consider the deterministic case where the environment is known, i.e. the actions that are selected are actually carried out, and the rewards are known. Next, we consider the case where there is some uncertainty regarding the outcome of an action: the agent chooses an action, but the actual action that is carried out is different from the one that was chosen. We however know the probabilities of the different outcomes.
+In another notebook, we will consider the case where the agent does not know the transition probabilities and has to learn them from experience.
 
 ## The test case
 
@@ -27,7 +27,7 @@ STATES = GRID_SIZE * GRID_SIZE
 # Define locations
 GOAL_STATES = [35]
 INIT_STATES = [0]
-PIT_STATES = [16]      # NEW
+PIT_STATES = [16]  # NEW
 OBSTACLES = [14, 20, 21, 27]
 GOAL_REWARD = 10
 PIT_REWARD = -1000
@@ -56,8 +56,12 @@ fig, ax = plt.subplots(figsize=(4, 4))
 cmap = ListedColormap(['white', 'gray', 'lightgreen', 'salmon', 'lightblue'])
 
 # plot the grid
-ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], 
-          origin='upper')
+ax.imshow(
+    grid_vis,
+    cmap=cmap,
+    extent=[0, GRID_SIZE, 0, GRID_SIZE],
+    origin="upper",
+)
 
 # Draw thick grid lines
 ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
@@ -70,9 +74,9 @@ for i in range(STATES):
     # Convert grid row to plot y (origin='upper' requires mapping)
     y_pos = GRID_SIZE - r - 0.5
     x_pos = c + 0.5
-    
+
     label = f"S{i}"
-    
+
     # Add status labels
     if i in OBSTACLES:
         label += "\n(Wall)"
@@ -82,18 +86,29 @@ for i in range(STATES):
         label += "\n(Pit)"
     elif i in INIT_STATES:
         label += "\n(Start)"
-    
+
     # Decide text color based on background darkness
-    text_color = 'white' if i in OBSTACLES else 'black'
-    
-    ax.text(x_pos, y_pos, label, ha='center', va='center', 
-            fontsize=11, fontweight='normal', color=text_color)
+    text_color = "white" if i in OBSTACLES else "black"
+
+    ax.text(
+        x_pos,
+        y_pos,
+        label,
+        ha="center",
+        va="center",
+        fontsize=11,
+        fontweight="normal",
+        color=text_color,
+    )
 
 # Clean up axes
 ax.set_xticklabels([])
 ax.set_yticklabels([])
-ax.set_title("Gridworld with obstacles and a pit", fontsize=11, 
-             fontweight='normal')
+ax.set_title(
+    "Gridworld with obstacles and a pit",
+    fontsize=11,
+    fontweight="normal",
+)
 
 plt.show()
 ```
@@ -125,15 +140,19 @@ def move(s, a_idx):
     """
     row, col = divmod(s, GRID_SIZE)
     dr, dc = ACTIONS[a_idx]
-    nr = max(0, min(GRID_SIZE-1, row + dr))
-    nc = max(0, min(GRID_SIZE-1, col + dc))
+    nr = max(0, min(GRID_SIZE - 1, row + dr))
+    nc = max(0, min(GRID_SIZE - 1, col + dc))
     next_s = nr * GRID_SIZE + nc
 
-    if next_s in OBSTACLES: next_s = s
+    if next_s in OBSTACLES:
+        next_s = s
 
-    if next_s in GOAL_STATES: reward = GOAL_REWARD
-    elif next_s in PIT_STATES: reward = PIT_REWARD
-    else: reward = -1
+    if next_s in GOAL_STATES:
+        reward = GOAL_REWARD
+    elif next_s in PIT_STATES:
+        reward = PIT_REWARD
+    else:
+        reward = -1
 
     return next_s, reward
 ```
@@ -141,18 +160,19 @@ It is convenient to treat the Gridworld as a directed graph, where an edge exist
 
 ```{python}
 # Grid Setup
-TERMINAL_STATES = {35: GOAL_REWARD, 16: PIT_REWARD} # {state: reward}
+TERMINAL_STATES = {35: GOAL_REWARD, 16: PIT_REWARD}  # {state: reward}
 GAMMA = 0.9
-ACTIONS = [(-1,0), (1,0), (0,-1), (0,1)]  # Up, Down, Left, Right
+ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Up, Down, Left, Right
 
 # Precompute Predecessors (The Graph)
 predecessors = {i: [] for i in range(STATES)}
 for s in range(STATES):
-    if s in TERMINAL_STATES or s in OBSTACLES: continue
+    if s in TERMINAL_STATES or s in OBSTACLES:
+        continue
     r, c = divmod(s, GRID_SIZE)
     for a in ACTIONS:
-        nr = max(0, min(GRID_SIZE-1, r + a[0]))
-        nc = max(0, min(GRID_SIZE-1, c + a[1]))
+        nr = max(0, min(GRID_SIZE - 1, r + a[0]))
+        nc = max(0, min(GRID_SIZE - 1, c + a[1]))
         ns = nr * GRID_SIZE + nc
         if ns != s and ns not in OBSTACLES:
             predecessors[ns].append(s)
@@ -186,7 +206,7 @@ def backward_update(current_state):
         # Bellman: V(prev) = max(V(prev), step_reward + gamma * V(current))
         step_reward = -1
         new_val = step_reward + GAMMA * current_val
-        
+
         if new_val > V[prev]:
             V[prev] = new_val
             # Continue recursion backward only if we found a better path
@@ -198,7 +218,7 @@ backward_update(GOAL_STATES[0])
 
 ```{python}
 #| echo: false
-V_display = V.reshape(GRID_SIZE,GRID_SIZE).copy()
+V_display = V.reshape(GRID_SIZE, GRID_SIZE).copy()
 
 for obs in OBSTACLES:
     V_display[divmod(obs, GRID_SIZE)] = np.nan
@@ -223,22 +243,24 @@ def get_next_states(s):
     next_states = []
     for a in ACTIONS:
         r, c = divmod(s, GRID_SIZE)
-        nr = max(0, min(GRID_SIZE-1, r + a[0]))
-        nc = max(0, min(GRID_SIZE-1, c + a[1]))
+        nr = max(0, min(GRID_SIZE - 1, r + a[0]))
+        nc = max(0, min(GRID_SIZE - 1, c + a[1]))
         ns = nr * GRID_SIZE + nc
-        if ns != s and ns not in OBSTACLES and ns <= STATES-1:
+        if ns != s and ns not in OBSTACLES and ns <= STATES - 1:
             next_states.append(ns)
     return next_states
 
 # Extracting the optimal path from S0 to the goal
 current_state = 0
-optimal_path = [current_state]  
+optimal_path = [current_state]
 while current_state != GOAL_STATES[0]:
     next_states = get_next_states(current_state)
     if not next_states:
         break
-    max_index, max_value = max(enumerate(V[next_states]), 
-                               key=lambda x: x[1])
+    max_index, max_value = max(
+        enumerate(V[next_states]),
+        key=lambda x: x[1],
+    )
     current_state = next_states[max_index]
     optimal_path.append(current_state)
 ```
@@ -251,44 +273,76 @@ One optimal path is pictured below.
 
 def draw_optimal_path(path, title):
     fig, ax = plt.subplots(figsize=(5, 5))
-    ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], 
-              origin='upper')
+    ax.imshow(
+        grid_vis,
+        cmap=cmap,
+        extent=[0, GRID_SIZE, 0, GRID_SIZE],
+        origin="upper",
+    )
     ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
     ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
-    ax.grid(which='both', color='black', linestyle='-', linewidth=2)
+    ax.grid(which="both", color="black", linestyle="-", linewidth=2)
 
     for i in range(STATES):
         r, c = divmod(i, GRID_SIZE)
         y_pos = GRID_SIZE - r - 0.5
         x_pos = c + 0.5
         label = f"S{i}"
-        if i in OBSTACLES: label += "\n(Wall)"
-        elif i in GOAL_STATES: label += "\n(Goal)"
-        elif i in PIT_STATES: label += "\n(Pit)"
-        elif i in INIT_STATES: label += "\n(Start)"
-        text_color = 'white' if i in OBSTACLES else 'black'
-        ax.text(x_pos, y_pos, label, ha='center', va='center', 
-                fontsize=11, fontweight='normal', color=text_color)
+        if i in OBSTACLES:
+            label += "\n(Wall)"
+        elif i in GOAL_STATES:
+            label += "\n(Goal)"
+        elif i in PIT_STATES:
+            label += "\n(Pit)"
+        elif i in INIT_STATES:
+            label += "\n(Start)"
+        text_color = "white" if i in OBSTACLES else "black"
+        ax.text(
+            x_pos,
+            y_pos,
+            label,
+            ha="center",
+            va="center",
+            fontsize=11,
+            fontweight="normal",
+            color=text_color,
+        )
 
     for i in range(len(path) - 1):
         s1 = path[i]
-        s2 = path[i+1]
+        s2 = path[i + 1]
         r1, c1 = divmod(s1, GRID_SIZE)
         y1, x1 = GRID_SIZE - r1 - 0.5, c1 + 0.5
         r2, c2 = divmod(s2, GRID_SIZE)
         y2, x2 = GRID_SIZE - r2 - 0.5, c2 + 0.5
-        
+
         if s1 == s2:
-            ax.annotate("", xy=(x1+0.05, y1+0.1), xytext=(x1, y1),
-                        arrowprops=dict(
-                            arrowstyle="->,head_width=0.2,head_length=0.2", 
-                            connectionstyle="arc3,rad=-2", color="blue", 
-                            lw=1.5, shrinkA=10, shrinkB=10))
+            ax.annotate(
+                "",
+                xy=(x1 + 0.05, y1 + 0.1),
+                xytext=(x1, y1),
+                arrowprops=dict(
+                    arrowstyle="->,head_width=0.2,head_length=0.2",
+                    connectionstyle="arc3,rad=-2",
+                    color="blue",
+                    lw=1.5,
+                    shrinkA=10,
+                    shrinkB=10,
+                ),
+            )
         else:
-            ax.annotate("", xy=(x2, y2), xytext=(x1, y1), 
-                        arrowprops=dict(
-                            arrowstyle="->,head_width=0.25,head_length=0.3", 
-                            color="blue", lw=1.5, shrinkA=10, shrinkB=10))
+            ax.annotate(
+                "",
+                xy=(x2, y2),
+                xytext=(x1, y1),
+                arrowprops=dict(
+                    arrowstyle="->,head_width=0.25,head_length=0.3",
+                    color="blue",
+                    lw=1.5,
+                    shrinkA=10,
+                    shrinkB=10,
+                ),
+            )
 
     ax.set_xticklabels([])
     ax.set_yticklabels([])
@@ -303,7 +357,7 @@ draw_optimal_path(optimal_path, "Optimal Path (Deterministic)")
 In the deterministic case, the MDP action-value function $Q(s,a)$ is defined as the return of taking action $a$ in state $s$ and thereafter following the optimal policy:
 $$
 Q(s,a) = R(s,a) + \gamma \max_{a'} Q(s',a')
-$$  
+$$
 where $s'$ is the next state resulting from taking action $a$ in state $s$. The state value function $V(s)$ is the optimal over all actions:
 $$
 V(s) = \max_a Q(s,a)
@@ -367,23 +421,23 @@ iter_count = 0
 while True:
     delta = 0
     Q_old = Q.copy()
-    
+
     for s in range(STATES):
         if s in TERMINAL_STATES or s in OBSTACLES:
             continue
-            
+
         for a_idx in range(len(ACTIONS)):
             next_s, reward = move(s, a_idx)
-            
+
             # The Q-update: reward + discounted max value of next state
             new_q = reward + GAMMA * np.max(Q_old[next_s])
-            
+
             delta = max(delta, abs(new_q - Q[s, a_idx]))
             Q[s, a_idx] = new_q
-            
+
     if delta < THRESHOLD:
         break
-    
+
     iter_count += 1
 
 print(f"Converged after {iter_count} iterations.")
@@ -405,7 +459,7 @@ while current_state not in GOAL_STATES:
     if current_state == next_state or next_state in visited_states:
         break  # Stop if it bumps into walls intentionally or cycles
     visited_states.add(next_state)
-    current_state = next_state  
+    current_state = next_state
 print("Intended optimal path from S0:", optimal_path)
 ```
 
@@ -504,29 +558,29 @@ Q = np.zeros((STATES, len(ACTIONS)))
 
 def get_transition_results(s, a_idx):
     """
-    Returns a list of (probability, next_state, reward) 
+    Returns a list of (probability, next_state, reward)
     """
-    
+
     # No transition from terminal states
     if s in GOAL_STATES or s in OBSTACLES:
         return [(1.0, s, 0)]
-    
+
     results = []
     # Map intended action to side-effect actions
     slippage = {
-        0: [2, 3], # Up -> Left, Right
-        1: [2, 3], # Down -> Left, Right
-        2: [0, 1], # Left -> Up, Down
-        3: [0, 1]  # Right -> Up, Down
+        0: [2, 3],  # Up -> Left, Right
+        1: [2, 3],  # Down -> Left, Right
+        2: [0, 1],  # Left -> Up, Down
+        3: [0, 1],  # Right -> Up, Down
     }
-    
+
     # 80% Intended Action
     results.append((0.8, *move(s, a_idx)))
     # 10% Slip A
     results.append((0.1, *move(s, slippage[a_idx][0])))
     # 10% Slip B
     results.append((0.1, *move(s, slippage[a_idx][1])))
-    
+
     return results
 
 
@@ -535,22 +589,22 @@ iter_count = 0
 while True:
     delta = 0
     Q_old = Q.copy()
-    
+
     for s in range(STATES):
         if s in GOAL_STATES or s in OBSTACLES:
             continue
-            
+
         for a_idx in range(len(ACTIONS)):
             # Calculate Expected Value: Sum of p * (r + gamma * maxQ)
             expected_value = 0
             outcomes = get_transition_results(s, a_idx)
-            
+
             for prob, next_s, reward in outcomes:
                 expected_value += prob * (reward + GAMMA * np.max(Q_old[next_s]))
-            
+
             delta = max(delta, abs(expected_value - Q[s, a_idx]))
             Q[s, a_idx] = expected_value
-            
+
     if delta < THRESHOLD:
         break
     iter_count += 1
@@ -571,7 +625,7 @@ The figure below shows the optimal policy in the stochastic case, where the arro
 
 def draw_policy(Q, grid_size=GRID_SIZE):
     fig, ax = plt.subplots(figsize=(5, 5))
-    
+
     # Action arrows mapping: 0:U, 1:D, 2:L, 3:R
     # (dx, dy) format for plt.arrow
     arrows = {0: (0, 0.3), 1: (0, -0.3), 2: (-0.3, 0), 3: (0.3, 0)}
@@ -580,35 +634,61 @@ def draw_policy(Q, grid_size=GRID_SIZE):
         row, col = divmod(s, grid_size)
         # Convert grid coordinates to plot coordinates (y is inverted)
         y, x = grid_size - 1 - row, col
-        
+
         # Draw cell background
         if s in GOAL_STATES:
-            color = '#66bb6a' # Green
+            color = "#66bb6a"  # Green
             label = "GOAL"
         elif s in PIT_STATES:
-            color = '#ef5350' # Red
+            color = "#ef5350"  # Red
             label = "PIT"
         elif s in OBSTACLES:
-            color = '#78909c' # Gray
+            color = "#78909c"  # Gray
             label = "WALL"
         else:
-            color = 'white'
+            color = "white"
             label = f"S{s}"
 
-        rect = plt.Rectangle([x - 0.5, y - 0.5], 1, 1, 
-                             facecolor=color, edgecolor='black')
+        rect = plt.Rectangle(
+            [x - 0.5, y - 0.5],
+            1,
+            1,
+            facecolor=color,
+            edgecolor="black",
+        )
         ax.add_patch(rect)
-        ax.text(x, y + 0.3, label, ha='center', va='center', fontweight='normal')
+        ax.text(
+            x,
+            y + 0.3,
+            label,
+            ha="center",
+            va="center",
+            fontweight="normal",
+        )
 
         # Draw Policy Arrows (only for non-terminal, non-obstacle states)
         if s not in GOAL_STATES and s not in PIT_STATES and s not in OBSTACLES:
             best_action = np.argmax(Q[s])
             dx, dy = arrows[best_action]
-            ax.arrow(x, y, dx, dy, head_width=0.1, head_length=0.1, 
-                     fc='black', ec='black')
-            
+            ax.arrow(
+                x,
+                y,
+                dx,
+                dy,
+                head_width=0.1,
+                head_length=0.1,
+                fc="black",
+                ec="black",
+            )
+
             # Optional: Display the max Q-value
-            ax.text(x, y - 0.3, f"V:{Q[s, best_action]:.1f}", ha='center', size=8)
+            ax.text(
+                x,
+                y - 0.3,
+                f"V:{Q[s, best_action]:.1f}",
+                ha="center",
+                size=8,
+            )
 
     # Grid formatting
     ax.set_xticks(np.arange(grid_size))
@@ -624,9 +704,9 @@ def draw_policy(Q, grid_size=GRID_SIZE):
 
 # Execute drawing
 draw_policy(Q)
-``` 
+```
 
-Of particular interest are the optimal decisions in $S_{15}$ and $S_{17}$, which are adjacent to the pit at $S_{16}$. Regarding $S_{15}$, the optimal action in the deterministic case is to move up; however, in the stochastic case, moving up involves a 10% chance of falling into the pit. The optimal strategy is therefore to (repeatedly) attempt to move left, with a 10% chance of slipping up but no chance of falling into the pit. Similarly, in $S_{17}$, the optimal action in the deterministic case is to move down, but this move has a 10% chance of slipping to the left into the pit; the optimal action is to (repeatedly) attempt to move right until the agent moves down to $S_{23}$. 
+Of particular interest are the optimal decisions in $S_{15}$ and $S_{17}$, which are adjacent to the pit at $S_{16}$. Regarding $S_{15}$, the optimal action in the deterministic case is to move up; however, in the stochastic case, moving up involves a 10% chance of falling into the pit. The optimal strategy is therefore to (repeatedly) attempt to move left, with a 10% chance of slipping up but no chance of falling into the pit. Similarly, in $S_{17}$, the optimal action in the deterministic case is to move down, but this move has a 10% chance of slipping to the left into the pit; the optimal action is to (repeatedly) attempt to move right until the agent moves down to $S_{23}$.
 
 To see this policy in action, we can simulate a realization of a path starting from the initial state. To illustrate the stochastic nature of the environment, consider the path starting from $S_6$. While the intended move was "down", a slippage to the right occurs.
 
@@ -643,19 +723,21 @@ stochastic_path = [current_state]
 MAX_STEPS = 100
 steps = 0
 
-while (current_state not in GOAL_STATES and 
-       current_state not in PIT_STATES and 
-       steps < MAX_STEPS):
-    
+while (
+    current_state not in GOAL_STATES
+    and current_state not in PIT_STATES
+    and steps < MAX_STEPS
+):
+
     # Get optimal action from our Q-table
     best_action = np.argmax(Q[current_state])
-    
+
     # Get possible outcomes (prob, next_state, reward)
     outcomes = get_transition_results(current_state, best_action)
-    
+
     probs = [out[0] for out in outcomes]
     next_states = [out[1] for out in outcomes]
-    
+
     # Sample the next state based on transition probabilities
     current_state = np.random.choice(next_states, p=probs)
     stochastic_path.append(current_state)
