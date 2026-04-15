@@ -16,6 +16,7 @@ The environment is a 6x6 grid, where the agent starts at the top-left corner (st
 ```{python}
 #| echo: false
 #| fig-align: center
+from IPython.display import Markdown, display
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
@@ -52,8 +53,11 @@ for init in INIT_STATES:
 fig, ax = plt.subplots(figsize=(4, 4))
 
 # Custom colormap
-# 0: white (empty), 1: gray (obstacle), 2: lightgreen (goal), 3: salmon (pit), 4: lightblue (start)
-cmap = ListedColormap(['white', 'gray', 'lightgreen', 'salmon', 'lightblue'])
+# 0: white (empty), 1: gray (obstacle), 2: lightgreen (goal),
+# 3: salmon (pit), 4: lightblue (start)
+cmap = ListedColormap(
+    ["white", "gray", "lightgreen", "salmon", "lightblue"]
+)
 
 # plot the grid
 ax.imshow(
@@ -66,7 +70,7 @@ ax.imshow(
 # Draw thick grid lines
 ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
 ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
-ax.grid(which='both', color='black', linestyle='-', linewidth=2)
+ax.grid(which="both", color="black", linestyle="-", linewidth=2)
 
 # Label the states
 for i in range(STATES):
@@ -197,6 +201,7 @@ V = np.full(STATES, -np.inf)
 for s, r in TERMINAL_STATES.items():
     V[s] = r
 
+
 def backward_update(current_state):
     """
     Recursively propagates value from a state to its ancestors.
@@ -212,6 +217,7 @@ def backward_update(current_state):
             # Continue recursion backward only if we found a better path
             backward_update(prev)
 
+
 # backward recursion, starting at the terminal state
 backward_update(GOAL_STATES[0])
 ```
@@ -223,15 +229,16 @@ V_display = V.reshape(GRID_SIZE, GRID_SIZE).copy()
 for obs in OBSTACLES:
     V_display[divmod(obs, GRID_SIZE)] = np.nan
 
-from IPython.display import display, Markdown
-
 latex_str = "\\begin{bmatrix}\n"
 for row in V_display:
-    row_str = ["\\text{Wall}" if np.isnan(x) else f"{x:.1f}" for x in row]
+    row_str = [
+        "\\text{Wall}" if np.isnan(x) else f"{x:.1f}" for x in row
+    ]
     latex_str += " & ".join(row_str) + " \\\\\n"
 latex_str += "\\end{bmatrix}"
 
-display(Markdown(f"**Optimal State Values:**\n\n$$\nV = {latex_str}\n$$"))
+md = f"**Optimal State Values:**\n\n$$\nV = {latex_str}\n$$"
+display(Markdown(md))
 ```
 
 We can now determine the optimal path from the initial state to the goal, using the predecessor table computed earlier.
@@ -249,6 +256,7 @@ def get_next_states(s):
         if ns != s and ns not in OBSTACLES and ns <= STATES - 1:
             next_states.append(ns)
     return next_states
+
 
 # Extracting the optimal path from S0 to the goal
 current_state = 0
@@ -346,8 +354,9 @@ def draw_optimal_path(path, title):
 
     ax.set_xticklabels([])
     ax.set_yticklabels([])
-    ax.set_title(title, fontsize=12, fontweight='normal')
+    ax.set_title(title, fontsize=12, fontweight="normal")
     plt.show()
+
 
 draw_optimal_path(optimal_path, "Optimal Path (Deterministic)")
 ```
@@ -556,6 +565,7 @@ $$
 # Initialize Q-table
 Q = np.zeros((STATES, len(ACTIONS)))
 
+
 def get_transition_results(s, a_idx):
     """
     Returns a list of (probability, next_state, reward)
@@ -600,7 +610,9 @@ while True:
             outcomes = get_transition_results(s, a_idx)
 
             for prob, next_s, reward in outcomes:
-                expected_value += prob * (reward + GAMMA * np.max(Q_old[next_s]))
+                expected_value += prob * (
+                    reward + GAMMA * np.max(Q_old[next_s])
+                )
 
             delta = max(delta, abs(expected_value - Q[s, a_idx]))
             Q[s, a_idx] = expected_value
@@ -667,7 +679,11 @@ def draw_policy(Q, grid_size=GRID_SIZE):
         )
 
         # Draw Policy Arrows (only for non-terminal, non-obstacle states)
-        if s not in GOAL_STATES and s not in PIT_STATES and s not in OBSTACLES:
+        if (
+            s not in GOAL_STATES
+            and s not in PIT_STATES
+            and s not in OBSTACLES
+        ):
             best_action = np.argmax(Q[s])
             dx, dy = arrows[best_action]
             ax.arrow(
@@ -697,10 +713,11 @@ def draw_policy(Q, grid_size=GRID_SIZE):
     ax.set_yticklabels([])
     ax.set_xlim(-0.5, grid_size - 0.5)
     ax.set_ylim(-0.5, grid_size - 0.5)
-    ax.set_aspect('equal')
+    ax.set_aspect("equal")
     ax.set_title("Stochastic Gridworld: Risk-Averse Policy", pad=20)
     plt.grid(False)
     plt.show()
+
 
 # Execute drawing
 draw_policy(Q)
