@@ -1,0 +1,162 @@
+---
+title: "Temporal Difference"
+format: pdf
+---
+
+This notebook illustrates the basic Temporal Difference prediction method.
+
+## The test case
+
+The environment is a 6x6 grid, where the agent starts at the top-left corner (state $S_0$) and aims to reach the bottom-right corner (state $S_{35}$). The agent can move in four directions: up, down, left, and right. However, there are obstacles (walls) at states $S_{14}, S_{20}, S_{21}$ and $S_{27}$ that the agent cannot pass through, and a pit at state $S_{16}$ where the agent would get stuck. The objective is modeled by assigning a reward to each state: the pit has a reward of -1000, and the end goal a reward of 10. Passing through any other state has a reward of -1. The agent receives the reward immediately upon entering a state.
+ The episode ends when the agent reaches either the end goal or the pit. Maximixing the reward is equivalent to finding the shortest feasible path to the goal.
+
+
+```{python}
+#| echo: false
+#| fig-align: center
+from IPython.display import Markdown, display
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import ListedColormap
+
+# 1. Environment Setup (matching the code logic)
+GRID_SIZE = 6
+STATES = GRID_SIZE * GRID_SIZE
+
+# Define locations
+GOAL_STATES = [35]
+INIT_STATES = [0]
+PIT_STATES = [16]  # NEW
+OBSTACLES = [14, 20, 21, 27]
+GOAL_REWARD = 10
+PIT_REWARD = -1000
+
+# Create a grid for visualization
+# 0: empty, 1: obstacle, 2: goal, 3: pit, 4: initial state
+grid_vis = np.zeros((GRID_SIZE, GRID_SIZE))
+
+for obs in OBSTACLES:
+    grid_vis[divmod(obs, GRID_SIZE)] = 1
+
+for gs in GOAL_STATES:
+    grid_vis[divmod(gs, GRID_SIZE)] = 2
+
+for ps in PIT_STATES:
+    grid_vis[divmod(ps, GRID_SIZE)] = 3
+
+for init in INIT_STATES:
+    grid_vis[divmod(init, GRID_SIZE)] = 4
+
+# 2. Plotting
+fig, ax = plt.subplots(figsize=(4, 4))
+
+# Custom colormap
+# 0: white (empty), 1: gray (obstacle), 2: lightgreen (goal),
+# 3: salmon (pit), 4: lightblue (start)
+cmap = ListedColormap(
+    ["white", "gray", "lightgreen", "salmon", "lightblue"]
+)
+
+# plot the grid
+ax.imshow(
+    grid_vis,
+    cmap=cmap,
+    extent=[0, GRID_SIZE, 0, GRID_SIZE],
+    origin="upper",
+)
+
+# Draw thick grid lines
+ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.grid(which="both", color="black", linestyle="-", linewidth=2)
+
+# Label the states
+for i in range(STATES):
+    r, c = divmod(i, GRID_SIZE)
+    # Convert grid row to plot y (origin='upper' requires mapping)
+    y_pos = GRID_SIZE - r - 0.5
+    x_pos = c + 0.5
+
+    label = f"S{i}"
+
+    # Add status labels
+    if i in OBSTACLES:
+        label += "\n(Wall)"
+    elif i in GOAL_STATES:
+        label += "\n(Goal)"
+    elif i in PIT_STATES:
+        label += "\n(Pit)"
+    elif i in INIT_STATES:
+        label += "\n(Start)"
+
+    # Decide text color based on background darkness
+    text_color = "white" if i in OBSTACLES else "black"
+
+    ax.text(
+        x_pos,
+        y_pos,
+        label,
+        ha="center",
+        va="center",
+        fontsize=11,
+        fontweight="normal",
+        color=text_color,
+    )
+
+# Clean up axes
+ax.set_xticklabels([])
+ax.set_yticklabels([])
+ax.set_title(
+    "Gridworld with obstacles and a pit",
+    fontsize=11,
+    fontweight="normal",
+)
+
+plt.show()
+```
+
+## The Temporal Difference prediction method.
+
+Recall the update rule for $V_{\pi}(S_t)$: 
+
+$$
+V_{\pi}(S-t) \leftarrow V_{\pi}(S_t) + \alpha[G_t - V_{\pi}(S_t)]
+$$
+
+where $G_t$ is the return following the a visit (first visit or every-visit) to $S_t$. The important point to notice is that the update can only be performed at the the end of the episode, when $G_t$ is known.
+
+The principle of TD prediction is to update $V_{\pi}(S_t)$ at time $t+1$, by approximating $G_t$ by $R_{t+1} + \gamma V(S_{t+1}$.
+The updating rule becomes:
+
+$$
+V_{\pi}(S-t) \leftarrow V_{\pi}(S_t) + \alpha[R_{t+1} + \gamma V(S_{t+1}) - V_{\pi}(S_t)]
+$$
+
+where we compare $V(S_t)$ to an estimate computed at time $t+1$, hence the name "Temporal Difference".
+
+
+We repeatedly use the following helper function to compute the next state $s'$ and reward $R(s,a)$ for a given state and action.
+
+```{python}
+def move(s, a_idx):
+    """
+    Returns the next state and reward for taking action a_idx in state s.
+    """
+    row, col = divmod(s, GRID_SIZE)
+    dr, dc = ACTIONS[a_idx]
+    nr = max(0, min(GRID_SIZE - 1, row + dr))
+    nc = max(0, min(GRID_SIZE - 1, col + dc))
+    next_s = nr * GRID_SIZE + nc
+
+    if next_s in OBSTACLES:
+        next_s = s
+
+    if next_s in GOAL_STATES:
+        reward = GOAL_REWARD
+    elif next_s in PIT_STATES:
+        reward = PIT_REWARD
+    else:
+        reward = -1
+
+    return next_s, reward
+```
