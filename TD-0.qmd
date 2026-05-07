@@ -17,6 +17,7 @@ The environment is a 6x6 grid, where the agent starts at the top-left corner (st
 from IPython.display import Markdown, display
 import matplotlib.pyplot as plt
 import numpy as np
+import random
 from matplotlib.colors import ListedColormap
 
 # 1. Environment Setup (matching the code logic)
@@ -123,21 +124,32 @@ $$
 V_{\pi}(S-t) \leftarrow V_{\pi}(S_t) + \alpha[G_t - V_{\pi}(S_t)]
 $$
 
-where $G_t$ is the return following the a visit (first visit or every-visit) to $S_t$. The important point to notice is that the update can only be performed at the the end of the episode, when $G_t$ is known.
+where $G_t$ is the return following the a visit (first visit or every-visit) to $S_t$. Notice that this update can only be performed at the end of the episode, when $G_t$ is known.
 
-The principle of TD prediction is to update $V_{\pi}(S_t)$ at time $t+1$, by approximating $G_t$ by $R_{t+1} + \gamma V(S_{t+1}$.
+The principle of TD prediction is to update $V_{\pi}(S_t)$ at time $t+1$, by approximating $G_t$ by $R_{t+1} + \gamma V(S_{t+1})$.
 The updating rule becomes:
 
 $$
 V_{\pi}(S-t) \leftarrow V_{\pi}(S_t) + \alpha[R_{t+1} + \gamma V(S_{t+1}) - V_{\pi}(S_t)]
 $$
 
-where we compare $V(S_t)$ to an estimate computed at time $t+1$, hence the name "Temporal Difference".
-
+In this formulation, we compare $V(S_t)$ to an estimate computed at time $t+1$, hence the name "Temporal Difference".
 
 We repeatedly use the following helper function to compute the next state $s'$ and reward $R(s,a)$ for a given state and action.
 
 ```{python}
+ACTIONS = [(-1,0), (1,0), (0,-1), (0,1)]  # Up, Down, Left, Right
+
+slippage = {
+        0: [0, 2, 3], # Up -> Up, Left, Right
+        1: [1, 2, 3], # Down -> Down, Left, Right
+        2: [2, 0, 1], # Left -> Left, Up, Down
+        3: [3, 0, 1]  # Right -> Right, Up, Down
+}
+
+# probabilities of move consistent with action and of slippage
+probs = [0.8, 0.1, 0.1]
+
 def move(s, a_idx):
     """
     Returns the next state and reward for taking action a_idx in state s.
@@ -159,4 +171,119 @@ def move(s, a_idx):
         reward = -1
 
     return next_s, reward
+```
+
+## SARSA Algorithm
+
+The name "SARSA" comes from the tuple $(S_t, A_t, R_{t+1}, S_{t+1}, A_{t+1})$.
+
+SARSA is on-policy: the agent learns the Q-value based on the action it actually selects using its current policy (including exploratory moves), rather than assuming it will always take the best possible action.
+
+We use the actual next action $A'$ to update the current state-action pair:
+
+$$
+Q(S, A) \leftarrow Q(S, A) + \alpha [R + \gamma Q(S', A') - Q(S, A)]
+$$
+
+```{python}
+
+# --- Constants ---
+ALPHA = 0.1    # Learning rate
+EPSILON_START = 0.5  # Exploration rate
+EPSILON_END = 0.01
+DECAY = 0.9995
+GAMMA = 0.9    # Discount factor
+EPISODES = 50000
+MAX_STEPS = 100
+
+# --- Environment Logic ---
+def step(s, a_idx):
+    """Actual environment transition (stochastic)."""
+    # 80% success, 10% slip left, 10% slip right
+    r = random.random()
+    if r < 0.8:
+        actual_a = a_idx
+    elif r < 0.9:
+        actual_a = slippage[a_idx][0]
+    else:
+        actual_a = slippage[a_idx][1]
+        
+    next_s, reward = move(s, actual_a) # Use your existing 'move' logic
+    return next_s, reward
+
+
+def choose_action(s, Q, epsilon):
+    """Epsilon-greedy action selection."""
+    if random.random() < epsilon:
+        return random.randint(0, 3)
+    else:
+        return np.argmax(Q[s])
+
+
+# --- SARSA Training Loop ---
+Q_sarsa = np.zeros((STATES, 4))
+
+epsilon = EPSILON_START
+
+for episode in range(EPISODES):
+    s = 0 # Start state
+    a = choose_action(s, Q_sarsa, epsilon)
+    steps = 0
+
+    while s not in [GOAL_STATES, PIT_STATES] and steps < MAX_STEPS:
+        next_s, reward = step(s, a)
+        next_a = choose_action(next_s, Q_sarsa, epsilon)
+        
+        # SARSA Update: Uses the next_a we just chose
+        td_target = reward + GAMMA * Q_sarsa[next_s, next_a]
+        td_error = td_target - Q_sarsa[s, a]
+        Q_sarsa[s, a] += ALPHA * td_error
+        
+        s, a = next_s, next_a
+        steps += 1
+    
+    epsilon = max(EPSILON_END, epsilon*DECAY)
+
+# --- Extract Optimal Policy ---
+optimal_policy = np.argmax(Q_sarsa, axis=1)
+```
+
+
+The figure below shows the optimal policy found. With `{python} EPISODES` episodes, we still get a sub-optimal policy in cells 15 and 17. The computed policy has a 10% chance of falling into the pit. 
+
+```{python}
+#| label: SARSA-optimal-policy
+#| fig-cap: "Optimal policy found by SARSA TD(0)"
+#| echo: false
+
+
+# Label the states and policy arrows
+action_arrows = ['↑', '↓', '←', '→']
+# Plot the optimal policy on the gridworld
+fig, ax = plt.subplots(figsize=(6, 6))
+
+ax.imshow(grid_vis, cmap=cmap, extent=[0, GRID_SIZE, 0, GRID_SIZE], origin='upper')
+
+ax.set_xticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.set_yticks(np.arange(0, GRID_SIZE + 1, 1))
+ax.grid(which='both', color='black', linestyle='-', linewidth=2)
+
+for i in range(STATES):
+    r, c = divmod(i, GRID_SIZE)
+    y_pos = GRID_SIZE - r - 0.5
+    x_pos = c + 0.5
+    text_color = 'white' if i in OBSTACLES else 'black'
+    
+    label = f"S{i}"
+    # Only show the policy arrow for valid playable states
+    if i not in OBSTACLES and i not in GOAL_STATES and i not in PIT_STATES:
+        label += f"\n{action_arrows[optimal_policy[i]]}"
+        
+    ax.text(x_pos, y_pos, label, ha='center', va='center', 
+            fontsize=10, fontweight='bold', color=text_color)
+
+ax.set_xticklabels([])
+ax.set_yticklabels([])
+
+plt.show()
 ```
