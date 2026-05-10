@@ -1,7 +1,65 @@
 ---
 title: "Temporal Difference"
-format: pdf
+format: 
+    pdf:
+        keep-tex: false
+
 ---
+
+```{python}
+#| echo: false
+
+# All imports
+
+import logging
+import matplotlib
+from IPython.display import Markdown, display
+import matplotlib.pyplot as plt
+import numpy as np
+import random
+from matplotlib.colors import ListedColormap
+import csv
+from IPython.display import Latex
+import pandas as pd
+```
+
+```{python}
+#| echo: false
+import logging
+
+# 1. Clear any existing handlers to avoid duplicates in notebooks
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+logging.getLogger('matplotlib.font_manager').disabled = True
+
+# 2. Define your handlers
+file_h = logging.FileHandler("sarsa_debug.log")
+file_h.setLevel(logging.DEBUG)  # Log everything to the file
+
+console_h = logging.StreamHandler()
+console_h.setLevel(logging.INFO) # Only show important stuff in the notebook
+
+# 3. Apply configuration
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(levelname)s,  %(message)s',
+    handlers=[file_h, console_h]
+)
+
+def csv_debug(filename, **kwargs):
+    row = {**kwargs}
+    with open(filename, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=row.keys())
+        if f.tell() == 0:
+            writer.writeheader()
+        writer.writerow(row)
+
+# Set matplotlib's logger to WARNING or ERROR level
+logging.getLogger('matplotlib').setLevel(logging.ERROR)
+logging.getLogger('PIL').setLevel(logging.ERROR)
+logger = logging.getLogger("SARSA")
+```
 
 This notebook illustrates the basic Temporal Difference prediction method.
 
@@ -12,13 +70,6 @@ The environment is a 6x6 grid, where the agent starts at the top-left corner (st
 
 
 ```{python}
-#| echo: false
-#| fig-align: center
-from IPython.display import Markdown, display
-import matplotlib.pyplot as plt
-import numpy as np
-import random
-from matplotlib.colors import ListedColormap
 
 # 1. Environment Setup (matching the code logic)
 GRID_SIZE = 6
@@ -30,7 +81,7 @@ INIT_STATES = [0]
 PIT_STATES = [16]  # NEW
 OBSTACLES = [14, 20, 21, 27]
 GOAL_REWARD = 10
-PIT_REWARD = -1000
+PIT_REWARD = -10000
 
 # Create a grid for visualization
 # 0: empty, 1: obstacle, 2: goal, 3: pit, 4: initial state
@@ -188,18 +239,31 @@ $$
 ```{python}
 
 # --- Constants ---
-ALPHA = 0.1    # Learning rate
+ALPHA = 0.01   # Learning rate
 EPSILON_START = 0.5  # Exploration rate
 EPSILON_END = 0.01
-DECAY = 0.9995
-GAMMA = 0.9    # Discount factor
-EPISODES = 50000
-MAX_STEPS = 100
+GAMMA = 0.99    # Discount factor
+EPISODES = 100000
+MAX_STEPS = 200
+# decay to epsilon_end at EPISODES/2
+DECAY = np.pow(EPSILON_END/EPSILON_START, 2/EPISODES)
+
+def get_epsilon(episode, total_episodes):
+    # Keep exploration high for the first 20k episodes
+    if episode < 20000:
+        return 1.0
+    # Slowly decay to a floor of 0.05
+    elif episode < 80000:
+        # Linear decay from 1.0 to 0.05
+        return 1.0 - (episode - 20000) * (0.95 / 60000)
+    # Final 20k episodes: drop to 0 to solidify the safe policy
+    else:
+        return 0.0
 
 # --- Environment Logic ---
 def step(s, a_idx):
     """Actual environment transition (stochastic)."""
-    # 80% success, 10% slip left, 10% slip right
+    # 80% success, 10% slippage on each side
     r = random.random()
     if r < 0.8:
         actual_a = a_idx
@@ -219,37 +283,54 @@ def choose_action(s, Q, epsilon):
     else:
         return np.argmax(Q[s])
 
+def set_reproducibility(seed):
+    random.seed(seed)
+    np.random.seed(seed)
 
 # --- SARSA Training Loop ---
-Q_sarsa = np.zeros((STATES, 4))
-
+Q = np.zeros((STATES, 4))
 epsilon = EPSILON_START
+# Use any integer
+SEED = 42 
+set_reproducibility(SEED)
+
+# Initialize a counter
+state_visits = np.zeros(STATES)
 
 for episode in range(EPISODES):
     s = 0 # Start state
-    a = choose_action(s, Q_sarsa, epsilon)
     steps = 0
+    eps = get_epsilon(episode, EPISODES)
+    a = choose_action(s, Q, eps)
 
     while s not in [GOAL_STATES, PIT_STATES] and steps < MAX_STEPS:
         next_s, reward = step(s, a)
-        next_a = choose_action(next_s, Q_sarsa, epsilon)
+        next_a = choose_action(next_s, Q, eps)
         
         # SARSA Update: Uses the next_a we just chose
-        td_target = reward + GAMMA * Q_sarsa[next_s, next_a]
-        td_error = td_target - Q_sarsa[s, a]
-        Q_sarsa[s, a] += ALPHA * td_error
-        
+        td_target = reward + GAMMA * Q[next_s, next_a]
+        td_error = td_target - Q[s, a]
+        Q[s, a] += ALPHA * td_error
         s, a = next_s, next_a
         steps += 1
+        state_visits[s] += 1
     
-    epsilon = max(EPSILON_END, epsilon*DECAY)
+    if episode % 1000 == 0:
+        csv_debug("sarsa.csv", episode=episode, 
+        epsilon=eps,
+        Q_Up=Q[15, 0],
+        Q_LEFT=Q[15, 2],
+        visits=state_visits[15])
+
 
 # --- Extract Optimal Policy ---
-optimal_policy = np.argmax(Q_sarsa, axis=1)
+optimal_policy = np.argmax(Q, axis=1)
+
+logging.shutdown()
 ```
 
 
-The figure below shows the optimal policy found. With `{python} EPISODES` episodes, we still get a sub-optimal policy in cells 15 and 17. The computed policy has a 10% chance of falling into the pit. 
+The figure below shows the optimal policy found. With `{python} EPISODES` episodes, we still get a sub-optimal policy in cells 15 and 17. The computed policy at those states has a 10% chance of falling into the pit. 
 
 ```{python}
 #| label: SARSA-optimal-policy
@@ -286,4 +367,41 @@ ax.set_xticklabels([])
 ax.set_yticklabels([])
 
 plt.show()
+```
+
+```{python}
+#| output: asis
+#| echo: false
+
+
+hyper_value = [ALPHA, GAMMA, EPSILON_START, EPSILON_END, 
+    EPISODES, MAX_STEPS, PIT_REWARD]
+hyper_format = ["{:.3f}"]*4 + ["{:.0f}"]*3
+# Define your hyperparameters in a dictionary
+hyperparams = {
+    "Hyperparameter": [
+        r"$\alpha$", 
+        r"$\gamma$", 
+        r"$\epsilon_{\text{start}}$", 
+        r"$\epsilon_{\text{end}}$", 
+        r"Episodes", 
+        r"Max Steps",
+        r"Pit Penalty"
+    ],
+    "Value": [f.format(v) for f,v in zip(hyper_format, hyper_value)],
+    "Remark": [
+        "Stability for large penalties",
+        "",
+        "Full initial exploration",
+        "Force deterministic safety at end",
+        "",
+        "about 20 times the shortest path",
+        "low risk tolerance"
+    ]
+}
+
+# Create and display the DataFrame
+df = pd.DataFrame(hyperparams)
+Latex(df.style.to_latex())
+print(df.to_latex(escape=False, index=False, column_format="lrl"))
 ```
