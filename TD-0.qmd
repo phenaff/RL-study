@@ -11,6 +11,7 @@ format:
 
 # All imports
 
+import os
 import logging
 import matplotlib
 from IPython.display import Markdown, display
@@ -70,7 +71,8 @@ The environment is a 6x6 grid, where the agent starts at the top-left corner (st
 
 
 ```{python}
-
+#| echo: false
+ 
 # 1. Environment Setup (matching the code logic)
 GRID_SIZE = 6
 STATES = GRID_SIZE * GRID_SIZE
@@ -78,7 +80,7 @@ STATES = GRID_SIZE * GRID_SIZE
 # Define locations
 GOAL_STATES = [35]
 INIT_STATES = [0]
-PIT_STATES = [16]  # NEW
+PIT_STATES = [16]  
 OBSTACLES = [14, 20, 21, 27]
 GOAL_REWARD = 10
 PIT_REWARD = -10000
@@ -244,19 +246,20 @@ EPSILON_START = 0.5  # Exploration rate
 EPSILON_END = 0.01
 GAMMA = 0.99    # Discount factor
 EPISODES = 100000
+EPISODES_1 = EPISODES/5
+EPISODES_2 = EPISODES*(4/5)
 MAX_STEPS = 200
 # decay to epsilon_end at EPISODES/2
 DECAY = np.pow(EPSILON_END/EPSILON_START, 2/EPISODES)
 
 def get_epsilon(episode, total_episodes):
-    # Keep exploration high for the first 20k episodes
-    if episode < 20000:
+    # Stage 1: Keep exploration high
+    if episode < EPISODES_1:
         return 1.0
-    # Slowly decay to a floor of 0.05
-    elif episode < 80000:
-        # Linear decay from 1.0 to 0.05
-        return 1.0 - (episode - 20000) * (0.95 / 60000)
-    # Final 20k episodes: drop to 0 to solidify the safe policy
+    # Stage 2: Slowly decay to a floor of 0.05
+    elif episode < EPISODES_2:
+        return 1.0 - (episode - EPISODES_1)/(EPISODES_2-EPISODES_1) * 0.95
+    # Stage 3: drop to 0 to solidify the safe policy
     else:
         return 0.0
 
@@ -265,14 +268,14 @@ def step(s, a_idx):
     """Actual environment transition (stochastic)."""
     # 80% success, 10% slippage on each side
     r = random.random()
-    if r < 0.8:
+    if r < probs[0]:
         actual_a = a_idx
-    elif r < 0.9:
+    elif r < (probs[0]+probs[1]):
         actual_a = slippage[a_idx][0]
     else:
         actual_a = slippage[a_idx][1]
         
-    next_s, reward = move(s, actual_a) # Use your existing 'move' logic
+    next_s, reward = move(s, actual_a)
     return next_s, reward
 
 
@@ -296,6 +299,13 @@ set_reproducibility(SEED)
 
 # Initialize a counter
 state_visits = np.zeros(STATES)
+import os
+import csv
+
+# Delete the file if it exists
+csv_log_path = "sarsa.csv"
+if os.path.exists(csv_log_path):
+    os.remove(csv_log_path)
 
 for episode in range(EPISODES):
     s = 0 # Start state
@@ -303,20 +313,23 @@ for episode in range(EPISODES):
     eps = get_epsilon(episode, EPISODES)
     a = choose_action(s, Q, eps)
 
-    while s not in [GOAL_STATES, PIT_STATES] and steps < MAX_STEPS:
+    while s not in [GOAL_STATES, PIT_STATES] and steps <= MAX_STEPS:
         next_s, reward = step(s, a)
         next_a = choose_action(next_s, Q, eps)
         
-        # SARSA Update: Uses the next_a we just chose
-        td_target = reward + GAMMA * Q[next_s, next_a]
+        # SARSA Update
+        if next_s in [GOAL_STATES, PIT_STATES] or steps == MAX_STEPS:
+            td_target = reward
+        else:
+            td_target = reward + GAMMA * Q[next_s, next_a]
         td_error = td_target - Q[s, a]
         Q[s, a] += ALPHA * td_error
         s, a = next_s, next_a
         steps += 1
         state_visits[s] += 1
     
-    if episode % 1000 == 0:
-        csv_debug("sarsa.csv", episode=episode, 
+    if episode % 500 == 0:
+        csv_debug(csv_log_path, episode=episode, 
         epsilon=eps,
         Q_Up=Q[15, 0],
         Q_LEFT=Q[15, 2],
