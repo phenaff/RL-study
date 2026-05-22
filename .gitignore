@@ -5,8 +5,9 @@
 *_cache/
 *_files/
 *.html
-*.pdf
 *.png
+*.log
+*.csv
 
 # Python
 # Byte-compiled / optimized / DLL files
